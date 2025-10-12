@@ -1,0 +1,24 @@
+{
+  "enabled": true,
+  "name": "API Documentation Sync",
+  "description": "When new routes or API handlers are added, update the Feature Spec doc with endpoints, request/response JSON, auth, rate limits, and CSP impact. If missing, create it from the project template. Block the PR if the doc or test stubs aren't present.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*route*.js",
+      "**/*route*.ts",
+      "**/*handler*.js",
+      "**/*handler*.ts",
+      "**/*api*.js",
+      "**/*api*.ts",
+      "**/routes/**",
+      "**/api/**",
+      "**/handlers/**"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "New API routes or handlers have been detected. Please analyze the changes and:\n\n1. Check if a Feature Spec document exists for this API\n2. If missing, create one from the project template including:\n   - Endpoint definitions\n   - Request/response JSON schemas\n   - Authentication requirements\n   - Rate limiting specifications\n   - CSP (Content Security Policy) impact analysis\n3. If existing, update it with the new endpoints and their specifications\n4. Verify that corresponding test stubs are present\n5. If documentation or test stubs are missing, recommend blocking the PR until they are added\n\nFocus on maintaining comprehensive API documentation that includes all technical specifications and security considerations."
+  }
+}

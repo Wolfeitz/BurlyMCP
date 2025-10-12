@@ -1,0 +1,24 @@
+{
+  "enabled": true,
+  "name": "Dev Server Port Manager",
+  "description": "Manages port 5173 availability before dev server starts, terminates conflicting processes, creates devlock file to prevent concurrent restarts, and excludes build directories from watch",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/**/*",
+      "public/**/*",
+      "package.json",
+      "vite.config.*",
+      "svelte.config.*",
+      "*.html",
+      "*.js",
+      "*.ts",
+      "*.svelte"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Before starting the dev server, ensure port 5173 is available by: 1) Check if anything is listening on port 5173, 2) If occupied, terminate any Node/Vite processes using port 5173, 3) Wait up to 5 seconds and re-check port availability, 4) If still busy after 5s, fail with clear error message instead of using alternate port, 5) Create a .devlock file to prevent concurrent restarts within 15 seconds, 6) Remove .devlock file when appropriate, 7) Exclude node_modules/.vite, .svelte-kit, and build/ directories from triggering watch restarts. Provide specific shell commands to accomplish these tasks."
+  }
+}

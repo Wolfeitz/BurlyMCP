@@ -1,0 +1,123 @@
+# Burly MCP Tool Policy Configuration
+#
+# This file defines the security policies and configurations for all tools
+# available through the MCP server. Each tool must be explicitly defined
+# here with its validation schema and execution parameters.
+#
+# Security Note: Only tools defined in this file can be executed. This
+# whitelist approach ensures that AI assistants cannot execute arbitrary
+# system commands.
+
+# Tool Definitions
+# Each tool has the following configuration:
+# - description: Human-readable description of what the tool does
+# - args_schema: JSON Schema for validating tool arguments
+# - command: Command template to execute (with argument substitution)
+# - mutates: Whether the tool modifies system state
+# - requires_confirm: Whether confirmation is required before execution
+# - timeout_sec: Maximum execution time in seconds
+# - notify: List of notification types to send (success, failure, need_confirm)
+
+tools:
+  # Docker container listing tool
+  docker_ps:
+    description: "List Docker containers with status information"
+    args_schema:
+      type: "object"
+      properties: {}
+      additionalProperties: false
+    command: ["docker", "ps", "--format", "table"]
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 30
+    notify: ["failure"]
+
+  # Disk space monitoring tool
+  disk_space:
+    description: "Check filesystem disk usage"
+    args_schema:
+      type: "object"
+      properties: {}
+      additionalProperties: false
+    command: ["df", "-hT"]
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 15
+    notify: ["failure"]
+
+  # Blog validation tool
+  blog_stage_markdown:
+    description: "Validate Markdown blog post with YAML front-matter"
+    args_schema:
+      type: "object"
+      properties:
+        file_path:
+          type: "string"
+          pattern: "^[a-zA-Z0-9._/-]+\\.md$"
+      required: ["file_path"]
+      additionalProperties: false
+    command: []  # Custom Python implementation
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 10
+    notify: ["failure"]
+
+  # Blog publishing tool (mutating operation)
+  blog_publish_static:
+    description: "Publish validated blog content to static site directory"
+    args_schema:
+      type: "object"
+      properties:
+        source_files:
+          type: "array"
+          items:
+            type: "string"
+            pattern: "^[a-zA-Z0-9._/-]+\\.md$"
+          minItems: 1
+        _confirm:
+          type: "boolean"
+      required: ["source_files"]
+      additionalProperties: false
+    command: []  # Custom Python implementation
+    mutates: true
+    requires_confirm: true
+    timeout_sec: 60
+    notify: ["success", "failure", "need_confirm"]
+
+  # Gotify notification test tool
+  gotify_ping:
+    description: "Send test notification via Gotify"
+    args_schema:
+      type: "object"
+      properties:
+        message:
+          type: "string"
+          maxLength: 200
+      additionalProperties: false
+    command: []  # Custom Python implementation
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 10
+    notify: ["success", "failure"]
+
+# Global Configuration
+config:
+  # Maximum output size before truncation (in bytes)
+  output_truncate_limit: 10240
+  
+  # Default timeout for tools without specific timeout
+  default_timeout_sec: 30
+  
+  # Audit log configuration
+  audit_log_path: "/var/log/agentops/audit.jsonl"
+  
+  # Security constraints
+  security:
+    # Blog staging directory (read-only for validation)
+    blog_stage_root: "/app/data/blog/stage"
+    
+    # Blog publish directory (write-only for publishing)
+    blog_publish_root: "/app/data/blog/public"
+    
+    # Allowed file extensions for blog operations
+    allowed_blog_extensions: [".md", ".markdown"]

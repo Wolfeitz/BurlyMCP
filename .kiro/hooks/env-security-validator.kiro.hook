@@ -1,0 +1,23 @@
+{
+  "enabled": true,
+  "name": "Environment Security Validator",
+  "description": "Syncs .env.example with required keys, prevents secrets in tracked files, validates unique ports in ports.json, and ensures CORS origins match configured domains",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      ".env",
+      ".env.example",
+      "ports.json",
+      "**/*.js",
+      "**/*.ts",
+      "**/*.json",
+      "**/*.yml",
+      "**/*.yaml"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Analyze the changed files and perform the following validations:\n\n1. **Environment Sync**: Compare .env.example with any .env files and ensure .env.example contains all required keys (without values). If keys are missing, generate a diff to add them.\n\n2. **Secret Detection**: Scan all tracked files for potential secrets (API keys, passwords, tokens, private keys). Look for patterns like:\n   - API_KEY=actual_value\n   - PASSWORD=real_password  \n   - TOKEN=bearer_token\n   - Private key content\n   If secrets are found, REFUSE to proceed and list the violations.\n\n3. **Port Validation**: If ports.json exists, validate that all host ports are unique across services. If duplicates exist, REFUSE to proceed and show the conflicts.\n\n4. **CORS Validation**: Check for CORS origin configurations in code and ensure they match the domains configured in environment/config files. If mismatches exist, propose corrected diffs.\n\nFor any violations found, REFUSE to proceed and provide specific corrected diffs showing exactly what needs to be fixed. Only proceed if all validations pass."
+  }
+}

@@ -1,0 +1,95 @@
+# Burly MCP Server - Docker Compose Configuration
+#
+# This compose file provides a complete deployment setup for the Burly MCP server
+# with proper volume mounts, security constraints, and environment configuration.
+#
+# Usage:
+#   docker-compose up -d    # Start in background
+#   docker-compose logs -f  # View logs
+#   docker-compose down     # Stop and remove
+
+version: '3.8'
+
+services:
+  burly-mcp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: burly-mcp-server
+    
+    # Security: Run as non-root user
+    user: "1000:1000"
+    
+    # Resource limits for security
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    
+    # Environment variables
+    environment:
+      # Gotify notifications (optional)
+      - GOTIFY_ENABLED=false
+      - GOTIFY_URL=${GOTIFY_URL:-}
+      - GOTIFY_TOKEN=${GOTIFY_TOKEN:-}
+      
+      # Logging configuration
+      - LOG_LEVEL=INFO
+      - AUDIT_LOG_PATH=/var/log/agentops/audit.jsonl
+      
+      # Security settings
+      - BLOG_STAGE_ROOT=/app/data/blog/stage
+      - BLOG_PUBLISH_ROOT=/app/data/blog/public
+      - OUTPUT_TRUNCATE_LIMIT=10240
+    
+    # Volume mounts
+    volumes:
+      # Policy configuration (read-only)
+      - ./policy:/app/policy:ro
+      
+      # Audit logs (read-write)
+      - burly-mcp-logs:/var/log/agentops
+      
+      # Blog directories
+      - burly-mcp-blog-stage:/app/data/blog/stage:ro
+      - burly-mcp-blog-public:/app/data/blog/public
+      
+      # Docker socket for container operations (read-only)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    
+    # Network configuration
+    # No ports exposed - MCP uses stdin/stdout only
+    network_mode: none
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # Read-only root filesystem for security
+    read_only: true
+    
+    # Temporary filesystems for writable areas
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+      - /var/tmp:noexec,nosuid,size=50m
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import server; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# Named volumes for persistent data
+volumes:
+  burly-mcp-logs:
+    driver: local
+  burly-mcp-blog-stage:
+    driver: local
+  burly-mcp-blog-public:
+    driver: local

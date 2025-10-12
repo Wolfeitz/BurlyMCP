@@ -1,0 +1,30 @@
+{
+  "enabled": true,
+  "name": "Security Quick Pass",
+  "description": "Runs comprehensive security checks (ESLint security rules, npm audit for production dependencies, gitleaks for secrets, and trivy for vulnerabilities) on server and infrastructure file changes. Blocks merges until high/critical issues are resolved.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "server/**/*",
+      "infra/**/*",
+      "infrastructure/**/*",
+      "backend/**/*",
+      "api/**/*",
+      "src/server/**/*",
+      "src/api/**/*",
+      "docker/**/*",
+      "k8s/**/*",
+      "kubernetes/**/*",
+      "terraform/**/*",
+      "ansible/**/*",
+      "scripts/**/*",
+      "deploy/**/*",
+      "deployment/**/*"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Run a comprehensive security analysis on the changed server/infrastructure files. Execute the following security checks in order:\n\n1. ESLint with security-focused rules (eslint-plugin-security, @typescript-eslint/recommended-requiring-type-checking)\n2. npm audit --production-only to check for vulnerabilities in production dependencies\n3. gitleaks to scan for exposed secrets and credentials\n4. trivy filesystem scan for known vulnerabilities\n\nFor each tool, capture and analyze the output. If ANY high or critical severity issues are found:\n- FAIL the hook immediately\n- Generate a concise, actionable summary of security issues found\n- Propose minimal code diffs to fix issues including:\n  * Security headers (Content-Security-Policy, X-Frame-Options, etc.)\n  * Rate limiting implementations\n  * Input validation improvements\n  * Content-length restrictions\n  * Authentication/authorization fixes\n- Clearly state that the merge must be blocked until these security issues are resolved\n\nFormat the response as a security report with severity levels, affected files, and specific remediation steps. Be direct and actionable in recommendations."
+  }
+}
