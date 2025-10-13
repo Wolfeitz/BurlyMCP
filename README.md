@@ -30,9 +30,35 @@ This implementation is "burly" because it's built with security and robustness a
 
 ### Prerequisites
 
+**System Requirements:**
 - Docker and Docker Compose
 - Python 3.12+ (for development)
 - Basic understanding of containerization
+
+**System Dependencies:**
+- Docker daemon (for container operations)
+- Access to `/var/run/docker.sock` (for Docker API)
+- Sufficient disk space for audit logs
+- Network access for Gotify notifications (optional)
+
+### Security Tools (Recommended)
+
+For comprehensive security analysis during development:
+
+```bash
+# Install security scanning tools
+sudo apt install gitleaks          # Secret detection
+sudo snap install trivy           # Vulnerability scanning
+
+# Or using alternative package managers:
+# brew install gitleaks trivy      # macOS with Homebrew
+# choco install gitleaks trivy     # Windows with Chocolatey
+```
+
+These tools are used for:
+- **gitleaks**: Scanning for exposed secrets and credentials in code
+- **trivy**: Filesystem vulnerability scanning for known security issues
+- **npm audit**: Dependency vulnerability checking (built into npm)
 
 ### 1. Clone and Setup
 
@@ -63,6 +89,28 @@ echo '{"method": "list_tools"}' | docker-compose exec -T burly-mcp python -m ser
 ### 3. Integration with Open WebUI
 
 See [docs/open-webui.md](docs/open-webui.md) for detailed integration instructions.
+
+## Alternative: Manual Installation
+
+If you prefer to run without Docker:
+
+```bash
+# Install Python dependencies
+pip install -e .
+
+# Create required directories
+sudo mkdir -p /var/log/agentops
+sudo chown $USER:$USER /var/log/agentops
+
+# Run the MCP server
+python -m server.main
+```
+
+**Note:** Manual installation requires:
+- Python 3.12+
+- All system dependencies listed above
+- Proper permissions for log directories
+- Docker daemon running (for Docker tools)
 
 ## Available Tools
 
@@ -176,6 +224,53 @@ isort server/ tests/
 mypy server/
 ```
 
+### Core Dependencies
+
+The Burly MCP server requires these Python packages:
+
+**Runtime Dependencies:**
+- `pydantic>=2.5.0` - Data validation and settings management
+- `pyyaml>=6.0.1` - YAML parsing for policy configuration
+- `jsonschema>=4.20.0` - JSON Schema validation for tool arguments
+- `requests>=2.31.0` - HTTP client for Gotify notifications
+- `docker>=7.0.0` - Docker API client for container operations
+
+**Development Dependencies:**
+- `pytest>=7.4.0` - Testing framework
+- `pytest-cov>=4.1.0` - Test coverage reporting
+- `pytest-asyncio>=0.21.0` - Async testing support
+- `black>=23.0.0` - Code formatting
+- `isort>=5.12.0` - Import sorting
+- `flake8>=6.0.0` - Linting
+- `mypy>=1.7.0` - Static type checking
+- `pre-commit>=3.5.0` - Git hooks for code quality
+
+All dependencies are automatically installed with `pip install -e ".[dev]"`
+
+### Security Validation
+
+Run security checks before committing code:
+
+```bash
+# Check for secrets and credentials
+gitleaks detect --source . --verbose
+
+# Scan for vulnerabilities
+trivy filesystem .
+
+# Check Python dependencies (if using npm for tooling)
+npm audit --production-only
+
+# Validate Python syntax and imports
+python -m py_compile server/*.py
+```
+
+These security checks help ensure:
+- No secrets are accidentally committed
+- Dependencies don't have known vulnerabilities  
+- Code follows security best practices
+- All imports and syntax are valid
+
 ### Adding New Tools
 
 1. Define the tool in `policy/tools.yaml`
@@ -226,10 +321,51 @@ See [docs/config.md](docs/config.md) for detailed configuration options.
 - Security implications must be documented
 - Follow the existing code style (Black + isort)
 - Update documentation for user-facing changes
+- Run security validation before submitting PRs:
+  ```bash
+  # Required security checks
+  gitleaks detect --source .
+  trivy filesystem .
+  python -m py_compile server/*.py
+  ```
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Troubleshooting
+
+### Security Tools Not Found
+
+If you encounter "command not found" errors for security tools:
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install gitleaks
+sudo snap install trivy
+
+# macOS
+brew install gitleaks trivy
+
+# Windows (with Chocolatey)
+choco install gitleaks trivy
+
+# Alternative: Use Docker versions
+docker run --rm -v $(pwd):/src zricethezav/gitleaks:latest detect --source /src
+docker run --rm -v $(pwd):/src aquasec/trivy:latest filesystem /src
+```
+
+### Python Environment Issues
+
+```bash
+# If pip install fails, try:
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+
+# For permission issues:
+python -m pip install --user -e ".[dev]"
+```
 
 ## Support and Community
 
