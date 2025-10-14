@@ -72,7 +72,7 @@ check_dependencies() {
 
 # Function to run demo scenarios
 run_demo() {
-    print_status "Running demo scenarios..."
+    print_status "Running demo scenarios (configuration validation only)..."
     cd "$PROJECT_ROOT"
     
     if $PYTHON_CMD "$TEST_HARNESS" --demo --timeout "$TIMEOUT"; then
@@ -80,6 +80,26 @@ run_demo() {
         return 0
     else
         print_error "Demo scenarios failed"
+        return 1
+    fi
+}
+
+# Function to run full functionality tests
+run_full_test() {
+    print_status "Running full functionality tests with mock services..."
+    cd "$PROJECT_ROOT"
+    
+    # Source testing environment with mock services enabled
+    if [[ -f ".env.testing" ]]; then
+        print_status "Loading testing environment with mock services..."
+        source ".env.testing" > /dev/null 2>&1
+    fi
+    
+    if $PYTHON_CMD "$TEST_HARNESS" --full-test --timeout "$TIMEOUT"; then
+        print_success "Full functionality tests completed successfully"
+        return 0
+    else
+        print_error "Full functionality tests failed"
         return 1
     fi
 }
@@ -186,7 +206,8 @@ Burly MCP Test Runner
 Usage: $0 [COMMAND] [OPTIONS]
 
 Commands:
-    demo                Run comprehensive demo scenarios
+    demo                Run basic demo scenarios (config validation only)
+    full-test           Run comprehensive tests with mock services (actual functionality)
     interactive         Start interactive testing mode
     health              Run quick health check
     validate-tool TOOL  Validate specific tool (docker_ps, disk_space, etc.)
@@ -218,7 +239,7 @@ EOF
 COMMAND=""
 while [[ $# -gt 0 ]]; do
     case $1 in
-        demo|interactive|health|validate-all|docker|help)
+        demo|interactive|health|validate-all|docker|help|full-test)
             COMMAND="$1"
             shift
             ;;
@@ -299,6 +320,9 @@ fi
 case "$COMMAND" in
     demo)
         run_demo
+        ;;
+    full-test)
+        run_full_test
         ;;
     interactive)
         run_interactive
