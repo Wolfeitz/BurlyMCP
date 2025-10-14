@@ -1,62 +1,51 @@
-# Burly MCP Server - Secure Container Image
-#
-# This Dockerfile creates a hardened container for running the Burly MCP server
-# with minimal privileges and security-focused configuration.
-#
-# Security Features:
-# - Non-root user execution (agentops:1000)
-# - Minimal base image (python:3.12-slim)
-# - No unnecessary packages or tools
-# - Read-only filesystem where possible
-# - Explicit volume mounts for data directories
+# Burly MCP Server - Secure Container Build
+# Uses Python 3.12 slim base with security hardening
 
 FROM python:3.12-slim
 
-# Create non-root user for security
-# Using UID 1000 for compatibility with common Docker setups
-RUN groupadd -r agentops -g 1000 && \
-    useradd -r -g agentops -u 1000 -m -s /bin/bash agentops
+# Security: Create non-root user with fixed UID for consistency
+RUN groupadd -r agentops --gid=1000 && \
+    useradd -r -g agentops --uid=1000 --home-dir=/app --shell=/bin/bash agentops
 
-# Install system dependencies
-# Only install what's absolutely necessary for the application
+# Install system dependencies and clean up in single layer
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         docker.io \
         curl \
-    && rm -rf /var/lib/apt/lists/*
+        ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy Python dependencies and install them
-# Do this before copying source code to leverage Docker layer caching
+# Copy requirements and install Python dependencies
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -e . && \
+    pip cache purge
 
-# Copy application source code
+# Copy application code
 COPY server/ ./server/
 COPY policy/ ./policy/
 
 # Create necessary directories with proper permissions
-RUN mkdir -p /var/log/agentops /app/data/blog/stage /app/data/blog/public && \
-    chown -R agentops:agentops /var/log/agentops /app/data && \
-    chmod 755 /var/log/agentops && \
-    chmod 755 /app/data/blog/stage && \
-    chmod 755 /app/data/blog/public
+RUN mkdir -p /var/log/agentops /app/blog/stage /app/blog/publish && \
+    chown -R agentops:agentops /app /var/log/agentops
 
-# Switch to non-root user
+# Security: Switch to non-root user
 USER agentops
 
-# Expose no ports (MCP uses stdin/stdout)
-# This container communicates only via stdin/stdout for security
-
-# Health check to verify the application can start
+# Health check to ensure server is responsive
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import server; print('OK')" || exit 1
-
-# Set environment variables
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
+    CMD echo '{"method":"list_tools"}' | python -m server.main || exit 1
 
 # Default command
 CMD ["python", "-m", "server.main"]
+
+# Security labels
+LABEL maintainer="AgentOps Team" \
+      version="1.0.0" \
+      description="Secure MCP server for system operations" \
+      security.non-root="true" \
+      security.user="agentops:1000"

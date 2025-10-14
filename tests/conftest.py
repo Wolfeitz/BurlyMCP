@@ -25,6 +25,29 @@ def temp_dir() -> Generator[Path, None, None]:
 
 
 @pytest.fixture
+def test_policy_file():
+    """
+    Provide a context manager for creating test policy files in current directory.
+    
+    This avoids path traversal protection issues in PolicyLoader.
+    """
+    created_files = []
+    
+    def create_file(filename: str, content: str) -> Path:
+        policy_file = Path(filename)
+        policy_file.write_text(content)
+        created_files.append(policy_file)
+        return policy_file
+    
+    yield create_file
+    
+    # Cleanup
+    for file_path in created_files:
+        if file_path.exists():
+            file_path.unlink()
+
+
+@pytest.fixture
 def sample_policy_yaml() -> str:
     """
     Provide sample policy YAML content for testing.
