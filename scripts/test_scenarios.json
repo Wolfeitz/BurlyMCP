@@ -1,0 +1,414 @@
+{
+  "scenarios": [
+    {
+      "name": "comprehensive_list_tools",
+      "description": "Comprehensive test of list_tools with response validation",
+      "request": {
+        "method": "list_tools"
+      },
+      "expected_response": {
+        "ok": true,
+        "summary": "Available tools: 5 tools found",
+        "data": {
+          "tools": []
+        }
+      },
+      "should_succeed": true,
+      "timeout": 10,
+      "validation_rules": {
+        "required_tools": ["docker_ps", "disk_space", "blog_stage_markdown", "blog_publish_static", "gotify_ping"],
+        "tool_schema_fields": ["name", "description", "inputSchema"]
+      }
+    },
+    {
+      "name": "docker_ps_detailed",
+      "description": "Detailed Docker container listing with output validation",
+      "request": {
+        "method": "call_tool",
+        "name": "docker_ps",
+        "args": {}
+      },
+      "expected_response": {
+        "ok": true,
+        "summary": "Docker containers listed successfully"
+      },
+      "should_succeed": true,
+      "timeout": 30,
+      "validation_rules": {
+        "check_stdout": true,
+        "expected_metrics": ["elapsed_ms", "exit_code"]
+      }
+    },
+    {
+      "name": "disk_space_detailed", 
+      "description": "Detailed disk space check with filesystem validation",
+      "request": {
+        "method": "call_tool",
+        "name": "disk_space",
+        "args": {}
+      },
+      "expected_response": {
+        "ok": true,
+        "summary": "Disk space information retrieved"
+      },
+      "should_succeed": true,
+      "timeout": 15,
+      "validation_rules": {
+        "check_stdout": true,
+        "stdout_should_contain": ["Filesystem", "Size", "Used", "Avail"]
+      }
+    },
+    {
+      "name": "blog_validation_security_test_1",
+      "description": "Test path traversal prevention with ../ sequences",
+      "request": {
+        "method": "call_tool",
+        "name": "blog_stage_markdown",
+        "args": {
+          "file_path": "../../../etc/passwd"
+        }
+      },
+      "expected_response": {
+        "ok": false,
+        "summary": "Validation failed"
+      },
+      "should_succeed": false,
+      "timeout": 10,
+      "validation_rules": {
+        "should_have_error": true,
+        "error_should_contain": ["path", "security", "traversal"]
+      }
+    },
+    {
+      "name": "blog_validation_security_test_2", 
+      "description": "Test invalid file extension rejection",
+      "request": {
+        "method": "call_tool",
+        "name": "blog_stage_markdown",
+        "args": {
+          "file_path": "malicious.exe"
+        }
+      },
+      "expected_response": {
+        "ok": false,
+        "summary": "Validation failed"
+      },
+      "should_succeed": false,
+      "timeout": 10,
+      "validation_rules": {
+        "should_have_error": true,
+        "error_should_contain": ["extension", "invalid", "pattern"]
+      }
+    },
+    {
+      "name": "blog_publish_confirmation_workflow",
+      "description": "Test complete blog publishing confirmation workflow",
+      "request": {
+        "method": "call_tool",
+        "name": "blog_publish_static",
+        "args": {
+          "source_files": ["test-post.md", "another-post.md"]
+        }
+      },
+      "expected_response": {
+        "ok": true,
+        "need_confirm": true,
+        "summary": "Confirmation required for publishing operation"
+      },
+      "should_succeed": true,
+      "timeout": 30,
+      "validation_rules": {
+        "must_need_confirm": true,
+        "should_not_have_error": true
+      }
+    },
+    {
+      "name": "blog_publish_with_confirmation",
+      "description": "Test blog publishing with explicit confirmation",
+      "request": {
+        "method": "call_tool", 
+        "name": "blog_publish_static",
+        "args": {
+          "source_files": ["confirmed-post.md"],
+          "_confirm": true
+        }
+      },
+      "expected_response": {
+        "ok": true,
+        "summary": "Blog content published successfully"
+      },
+      "should_succeed": true,
+      "timeout": 60,
+      "validation_rules": {
+        "should_not_need_confirm": true,
+        "check_metrics": true
+      }
+    },
+    {
+      "name": "blog_publish_empty_files_array",
+      "description": "Test blog publishing with empty source files array",
+      "request": {
+        "method": "call_tool",
+        "name": "blog_publish_static", 
+        "args": {
+          "source_files": []
+        }
+      },
+      "expected_response": {
+        "ok": false,
+        "summary": "Validation failed"
+      },
+      "should_succeed": false,
+      "timeout": 10,
+      "validation_rules": {
+        "should_have_error": true,
+        "error_should_contain": ["minItems", "array", "empty"]
+      }
+    },
+    {
+      "name": "blog_publish_too_many_files",
+      "description": "Test blog publishing with too many files (DoS prevention)",
+      "request": {
+        "method": "call_tool",
+        "name": "blog_publish_static",
+        "args": {
+          "source_files": [
+            "file1.md", "file2.md", "file3.md", "file4.md", "file5.md",
+            "file6.md", "file7.md", "file8.md", "file9.md", "file10.md",
+            "file11.md", "file12.md", "file13.md", "file14.md", "file15.md",
+            "file16.md", "file17.md", "file18.md", "file19.md", "file20.md",
+            "file21.md", "file22.md", "file23.md", "file24.md", "file25.md",
+            "file26.md", "file27.md", "file28.md", "file29.md", "file30.md",
+            "file31.md", "file32.md", "file33.md", "file34.md", "file35.md",
+            "file36.md", "file37.md", "file38.md", "file39.md", "file40.md",
+            "file41.md", "file42.md", "file43.md", "file44.md", "file45.md",
+            "file46.md", "file47.md", "file48.md", "file49.md", "file50.md",
+            "file51.md"
+          ]
+        }
+      },
+      "expected_response": {
+        "ok": false,
+        "summary": "Validation failed"
+      },
+      "should_succeed": false,
+      "timeout": 10,
+      "validation_rules": {
+        "should_have_error": true,
+        "error_should_contain": ["maxItems", "too many", "limit"]
+      }
+    },
+    {
+      "name": "gotify_ping_custom_message",
+      "description": "Test Gotify notification with custom message",
+      "request": {
+        "method": "call_tool",
+        "name": "gotify_ping",
+        "args": {
+          "message": "Custom test message from MCP harness validation"
+        }
+      },
+      "expected_response": {
+        "ok": true,
+        "summary": "Test notification sent successfully"
+      },
+      "should_succeed": true,
+      "timeout": 15,
+      "validation_rules": {
+        "check_metrics": true,
+        "should_not_have_error": true
+      }
+    },
+    {
+      "name": "gotify_ping_empty_message",
+      "description": "Test Gotify notification without message (should use default)",
+      "request": {
+        "method": "call_tool",
+        "name": "gotify_ping",
+        "args": {}
+      },
+      "expected_response": {
+        "ok": true,
+        "summary": "Test notification sent successfully"
+      },
+      "should_succeed": true,
+      "timeout": 15,
+      "validation_rules": {
+        "check_metrics": true
+      }
+    },
+    {
+      "name": "gotify_ping_invalid_message",
+      "description": "Test Gotify notification with invalid characters in message",
+      "request": {
+        "method": "call_tool",
+        "name": "gotify_ping",
+        "args": {
+          "message": "Invalid chars: <script>alert('xss')</script> & $(rm -rf /)"
+        }
+      },
+      "expected_response": {
+        "ok": false,
+        "summary": "Validation failed"
+      },
+      "should_succeed": false,
+      "timeout": 10,
+      "validation_rules": {
+        "should_have_error": true,
+        "error_should_contain": ["pattern", "invalid", "characters"]
+      }
+    },
+    {
+      "name": "gotify_ping_message_too_long",
+      "description": "Test Gotify notification with message exceeding length limit",
+      "request": {
+        "method": "call_tool",
+        "name": "gotify_ping",
+        "args": {
+          "message": "This is a very long message that exceeds the maximum allowed length for Gotify notifications and should be rejected by the validation system to prevent abuse and spam attacks on the notification infrastructure which could overwhelm the system and cause performance issues for legitimate users who need to receive important alerts and notifications about system status and operational events that require immediate attention from administrators and operators."
+        }
+      },
+      "expected_response": {
+        "ok": false,
+        "summary": "Validation failed"
+      },
+      "should_succeed": false,
+      "timeout": 10,
+      "validation_rules": {
+        "should_have_error": true,
+        "error_should_contain": ["maxLength", "too long", "limit"]
+      }
+    },
+    {
+      "name": "invalid_tool_comprehensive",
+      "description": "Comprehensive test of invalid tool name handling",
+      "request": {
+        "method": "call_tool",
+        "name": "definitely_not_a_real_tool_name_12345",
+        "args": {}
+      },
+      "expected_response": {
+        "ok": false,
+        "summary": "Tool not found"
+      },
+      "should_succeed": false,
+      "timeout": 10,
+      "validation_rules": {
+        "should_have_error": true,
+        "error_should_contain": ["not found", "unknown", "invalid"]
+      }
+    },
+    {
+      "name": "call_tool_missing_name",
+      "description": "Test call_tool request without tool name",
+      "request": {
+        "method": "call_tool",
+        "args": {}
+      },
+      "expected_response": {
+        "ok": false,
+        "summary": "Missing tool name"
+      },
+      "should_succeed": false,
+      "timeout": 10,
+      "validation_rules": {
+        "should_have_error": true,
+        "error_should_contain": ["name", "required", "missing"]
+      }
+    },
+    {
+      "name": "unsupported_method",
+      "description": "Test handling of unsupported MCP method",
+      "request": {
+        "method": "unsupported_method_xyz",
+        "name": "some_tool"
+      },
+      "expected_response": {
+        "ok": false,
+        "summary": "Method not supported"
+      },
+      "should_succeed": false,
+      "timeout": 10,
+      "validation_rules": {
+        "should_have_error": true,
+        "error_should_contain": ["unsupported", "method", "invalid"]
+      }
+    },
+    {
+      "name": "request_missing_method",
+      "description": "Test request without method field",
+      "request": {
+        "name": "docker_ps",
+        "args": {}
+      },
+      "expected_response": {
+        "ok": false,
+        "summary": "Request parsing failed"
+      },
+      "should_succeed": false,
+      "timeout": 10,
+      "validation_rules": {
+        "should_have_error": true,
+        "error_should_contain": ["method", "required", "missing"]
+      }
+    },
+    {
+      "name": "stress_test_rapid_requests",
+      "description": "Stress test with multiple rapid requests (rate limiting test)",
+      "request": {
+        "method": "list_tools"
+      },
+      "expected_response": {
+        "ok": true,
+        "summary": "Available tools"
+      },
+      "should_succeed": true,
+      "timeout": 5,
+      "validation_rules": {
+        "repeat_count": 10,
+        "rapid_fire": true,
+        "check_rate_limiting": true
+      }
+    }
+  ],
+  "test_configuration": {
+    "default_timeout": 30,
+    "max_execution_time": 300,
+    "enable_security_tests": true,
+    "enable_stress_tests": false,
+    "log_all_responses": true,
+    "validate_response_schemas": true
+  },
+  "expected_tools": [
+    {
+      "name": "docker_ps",
+      "required_fields": ["name", "description", "inputSchema"],
+      "mutates": false,
+      "requires_confirm": false
+    },
+    {
+      "name": "disk_space", 
+      "required_fields": ["name", "description", "inputSchema"],
+      "mutates": false,
+      "requires_confirm": false
+    },
+    {
+      "name": "blog_stage_markdown",
+      "required_fields": ["name", "description", "inputSchema"],
+      "mutates": false,
+      "requires_confirm": false
+    },
+    {
+      "name": "blog_publish_static",
+      "required_fields": ["name", "description", "inputSchema"],
+      "mutates": true,
+      "requires_confirm": true
+    },
+    {
+      "name": "gotify_ping",
+      "required_fields": ["name", "description", "inputSchema"],
+      "mutates": false,
+      "requires_confirm": false
+    }
+  ]
+}
