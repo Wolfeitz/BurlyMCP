@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "name": "Start-Task Guard",
+  "description": "Monitors file saves in specs/** and docs/** directories and prompts to create a feature branch if working on main/master branch",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "specs/**",
+      "docs/**"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "You are the Start-Task Guard. A file has been saved in the specs or docs directory. Your job is to:\n\n1. Run `git rev-parse --abbrev-ref HEAD` to detect the current branch\n2. If the current branch is \"main\" or \"master\":\n   - Ask the user: \"You're on main. Create a feature branch and switch to it?\"\n   - If they say yes, create a feature branch named `feature/<YYYYMMDD>-<slug-of-latest-edited-file>` where:\n     - YYYYMMDD is today's date\n     - slug-of-latest-edited-file is the filename (lowercase, spaces→dashes, alphanumeric + dashes only)\n   - Use `git switch -c <branch-name>` to create and switch to the new branch\n3. If already on a non-main branch, just log \"Start-Task Guard: OK\" and do nothing\n\nImportant: Do NOT commit anything. This hook only manages branch switching to keep work off main."
+  }
+}

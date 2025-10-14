@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "name": "Finish-Task Guard",
+  "description": "Comprehensive task completion workflow that handles git operations, commit creation, push, PR readiness checks, and branch synchronization when requirements/design files are saved or files contain [finish-task] markers",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "specs/requirements.md",
+      "docs/design.md",
+      "**/*[finish-task]*"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Execute the finish-task workflow:\n\n1. **Preflight checks:**\n   - Verify we're in a git repository with origin remote\n   - Run `git fetch --prune origin`\n   - Check current branch - if on main/master, prompt to create/switch to feature/<YYYYMMDD>-<slug> branch first\n\n2. **Stage and commit changes:**\n   - Run `git add -A` to stage all changes\n   - If staged changes exist, create a Conventional Commit message (look for commit message in file marker, otherwise use \"feat: complete <slug>\")\n   - Block commits containing \"wip\" in the message\n   - Run `git commit -m \"<message>\" --no-verify` only if there are staged changes\n\n3. **Push changes:**\n   - Run `git push -u origin <branch>` to set upstream if missing\n   - If push is rejected due to divergence, run `git pull --rebase` then retry push\n\n4. **PR readiness assessment:**\n   - Compute diff vs origin/main using `git rev-list --count <branch> ^origin/main`\n   - Run quick checks: look at latest 10 commit subjects for wip|fixup!|squash! patterns\n   - Run `npm test` or `pytest -q` if project config detected\n   - Optional secret scan if trufflehog/gitleaks present\n   - Summarize as \"✅ Ready for PR\" or \"❌ Not ready\" with bullet reasons\n   - On user confirmation, run `gh pr create --fill --base main --head <branch>` (only if gh is authenticated)\n\n5. **Sync from main for next work:**\n   - Switch to main/master: `git switch main || git switch master`\n   - Pull latest: `git pull --ff-only`\n   - Switch back to feature branch and rebase on origin/main by default\n   - Fall back to merge if force-push is disallowed or branch is shared\n   - Push with `git push --force-with-lease` (rebase) or `git push` (merge)\n\n6. **Output brief report:**\n   - Branch name used\n   - Commit made (or \"no changes\")\n   - Push status\n   - PR recommendation\n   - Whether branch was updated from main"
+  }
+}

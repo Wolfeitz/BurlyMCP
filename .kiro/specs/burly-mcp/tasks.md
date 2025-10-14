@@ -39,7 +39,7 @@
   - Add tool lookup and validation methods
   - _Requirements: 4.1, 4.2_
 
-- [ ]* 2.4 Write unit tests for policy system
+- [x] 2.4 Write unit tests for policy system
   - Test YAML loading with valid and invalid files
   - Test schema validation with edge cases
   - Test tool registry operations
@@ -64,7 +64,7 @@
   - Add metrics collection (elapsed_ms, exit_code)
   - _Requirements: 1.1, 2.5, 6.4_
 
-- [ ]* 3.4 Write unit tests for MCP protocol
+- [x] 3.4 Write unit tests for MCP protocol
   - Test request parsing and response formatting
   - Test confirmation workflow
   - Test error handling scenarios
@@ -101,7 +101,7 @@
   - Add error handling for network failures
   - _Requirements: 3.2, 6.3_
 
-- [ ]* 4.6 Write integration tests for tools
+- [x] 4.6 Write integration tests for tools
   - Test Docker CLI integration with mock containers
   - Test file system operations with temporary directories
   - Test Gotify API integration
@@ -170,35 +170,35 @@
   - Test confirmation workflows
   - _Requirements: 1.1, 2.2, 6.4_
 
-- [ ] 8. Container packaging and deployment
-- [ ] 8.1 Create Dockerfile with security hardening
+- [x] 8. Container packaging and deployment
+- [x] 8.1 Create Dockerfile with security hardening
   - Use `python:3.12-slim` base image
   - Create non-root `agentops` user (uid 1000)
   - Install only required dependencies
   - _Requirements: 5.1, 5.2_
 
-- [ ] 8.2 Create docker-compose configuration
+- [x] 8.2 Create docker-compose configuration
   - Define volume mounts for policy, logs, and blog directories
   - Set environment variables and security constraints
   - Configure proper mount permissions
   - _Requirements: 5.2, 5.3, 5.4_
 
-- [ ] 8.3 Create default policy and configuration files with security focus
+- [x] 8.3 Create default policy and configuration files with security focus
   - Write `policy/tools.yaml` with all MVP tools and educational comments
   - Create `.env.example` template with NO secrets, only placeholders
   - Add comprehensive configuration documentation explaining each setting
   - Include security warnings and best practices in configuration files
   - _Requirements: 4.1, 5.1_
 
-- [ ] 9. Documentation and integration guides
-- [ ] 9.1 Create comprehensive operational documentation
+- [x] 9. Documentation and integration guides
+- [x] 9.1 Create comprehensive operational documentation
   - Write `docs/runbook.md` with beginner-friendly deployment guide
   - Create `docs/config.md` explaining every configuration option and why it matters
   - Add `docs/security.md` with threat model and mitigation strategies
   - Include `docs/mcp-explained.md` to educate users about MCP protocol
   - _Requirements: 5.1, 4.1_
 
-- [ ] 9.2 Create Open WebUI integration guide
+- [x] 9.2 Create Open WebUI integration guide
   - Write `docs/open-webui.md` with setup instructions
   - Add example agent prompts and workflows
   - Include troubleshooting section
