@@ -29,6 +29,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import jsonschema
+from test_strategy import DependencyChecker, TestScenarioGenerator
+from test_config import TestConfig
 
 
 @dataclass
@@ -73,6 +75,8 @@ class MCPTestHarness:
         self.server_command = server_command or ["python", "-m", "server.main"]
         self.response_schema = self._get_response_schema()
         self.demo_scenarios = self._create_demo_scenarios()
+        self.dependency_checker = None
+        self.test_config = TestConfig()
     
     def _get_response_schema(self) -> Dict[str, Any]:
         """
@@ -225,10 +229,10 @@ class MCPTestHarness:
                 }
             ),
             
-            # Gotify notification test (will fail without configuration)
+            # Gotify configuration validation test
             TestScenario(
-                name="gotify_ping_success",
-                description="Test Gotify notification (expected to fail without config)",
+                name="gotify_ping_no_config",
+                description="Test Gotify error handling when not configured",
                 request={
                     "method": "call_tool",
                     "name": "gotify_ping",
@@ -240,6 +244,8 @@ class MCPTestHarness:
                 },
                 should_succeed=False
             ),
+            
+
             
             # Invalid tool name
             TestScenario(
@@ -471,40 +477,143 @@ class MCPTestHarness:
         except Exception as e:
             return False, {}, f"Malformed JSON test error: {e}"
     
-    def run_demo_scenarios(self) -> List[TestResult]:
+    def run_adaptive_tests(self) -> List[TestResult]:
+        """
+        Run adaptive tests based on available dependencies.
+        
+        This is the CORRECT way to test configurable dependencies:
+        - Test actual functionality when dependencies are available
+        - Test error handling when dependencies are not available  
+        - Always test input validation and security
+        
+        Returns:
+            List of test results
+        """
+        print("=" * 60)
+        print("BURLY MCP ADAPTIVE TESTING")
+        print("=" * 60)
+        print()
+        
+        # Check what dependencies are available
+        checker = DependencyChecker()
+        dependencies = checker.check_all()
+        
+        print("Dependency Analysis:")
+        for name, dep in dependencies.items():
+            status = "✅ Available" if dep.available else "❌ Unavailable"
+            print(f"  {name}: {status}")
+            if dep.error:
+                print(f"    → Will test error handling for {name}")
+            else:
+                print(f"    → Will test integration for {name}")
+        print()
+        
+        # Generate appropriate test scenarios
+        generator = TestScenarioGenerator(dependencies)
+        scenario_groups = generator.generate_all_scenarios()
+        
+        # Convert to TestScenario objects and run
+        results = []
+        
+        for group_name, scenarios in scenario_groups.items():
+            print(f"--- {group_name.upper()} TESTS ---")
+            
+            for scenario_data in scenarios:
+                # Convert expected format to match TestScenario
+                expected_response = {
+                    "ok": scenario_data["expected"]["ok"],
+                    "summary": scenario_data["expected"]["summary_contains"]
+                }
+                
+                scenario = TestScenario(
+                    name=scenario_data["name"],
+                    description=scenario_data["description"],
+                    request=scenario_data["request"],
+                    expected_response=expected_response,
+                    should_succeed=scenario_data["expected"]["ok"]
+                )
+                
+                result = self.run_scenario(scenario)
+                results.append(result)
+                
+                # Print result with category
+                status = "✅ PASS" if result.success else "❌ FAIL"
+                category = scenario_data["category"]
+                print(f"  {status} [{category}] {scenario.name} ({result.execution_time_ms}ms)")
+                
+                if result.validation_errors:
+                    for error in result.validation_errors:
+                        print(f"    ⚠️  {error}")
+            
+            print()
+        
+        return results
+
+    def run_demo_scenarios(self, with_mocks: bool = False) -> List[TestResult]:
         """
         Run all demo scenarios.
+        
+        Args:
+            with_mocks: Whether to start mock services for full functionality testing
         
         Returns:
             List of test results
         """
         print("=" * 60)
         print("BURLY MCP TEST HARNESS - DEMO SCENARIOS")
+        if with_mocks:
+            print("(WITH MOCK SERVICES FOR FULL FUNCTIONALITY TESTING)")
         print("=" * 60)
         print()
         
-        results = []
+        mock_server = None
         
-        for scenario in self.demo_scenarios:
-            print("-" * 40)
-            result = self.run_scenario(scenario)
-            results.append(result)
-            
-            # Print result summary
-            status = "✅ PASS" if result.success else "❌ FAIL"
-            print(f"Result: {status} ({result.execution_time_ms}ms)")
-            
-            if result.validation_errors:
-                print("Validation errors:")
-                for error in result.validation_errors:
-                    print(f"  - {error}")
-            
-            if result.error_message:
-                print(f"Error: {result.error_message}")
-            
-            print()
+        if with_mocks:
+            # Start mock Gotify server
+            try:
+                from mock_gotify_server import MockGotifyServer
+                mock_server = MockGotifyServer()  # Auto-select port
+                mock_server.start()
+                
+                # Update environment to point to mock server
+                import os
+                os.environ["GOTIFY_URL"] = mock_server.get_url()
+                os.environ["GOTIFY_TOKEN"] = "test-token-12345"
+                
+                print(f"✅ Mock Gotify server started at {mock_server.get_url()}")
+            except Exception as e:
+                print(f"⚠️  Failed to start mock Gotify server: {e}")
+                print("   Gotify tests will show configuration errors")
         
-        return results
+        try:
+            results = []
+            
+            for scenario in self.demo_scenarios:
+                print("-" * 40)
+                result = self.run_scenario(scenario)
+                results.append(result)
+                
+                # Print result summary
+                status = "✅ PASS" if result.success else "❌ FAIL"
+                print(f"Result: {status} ({result.execution_time_ms}ms)")
+                
+                if result.validation_errors:
+                    print("Validation errors:")
+                    for error in result.validation_errors:
+                        print(f"  - {error}")
+                
+                if result.error_message:
+                    print(f"Error: {result.error_message}")
+                
+                print()
+            
+            return results
+            
+        finally:
+            # Clean up mock server
+            if mock_server:
+                mock_server.stop()
+                print("🛑 Mock Gotify server stopped")
     
     def run_interactive_mode(self):
         """Run interactive testing mode."""
@@ -712,6 +821,12 @@ Examples:
     )
     
     parser.add_argument(
+        "--full-test",
+        action="store_true",
+        help="Run adaptive tests based on available dependencies (RECOMMENDED)"
+    )
+    
+    parser.add_argument(
         "--interactive",
         action="store_true", 
         help="Run in interactive testing mode"
@@ -748,7 +863,15 @@ Examples:
     
     # Execute requested operation
     if args.demo:
-        results = harness.run_demo_scenarios()
+        results = harness.run_demo_scenarios(with_mocks=False)
+        print(harness.generate_test_report(results))
+        
+        # Exit with error code if any tests failed
+        if any(not r.success for r in results):
+            sys.exit(1)
+            
+    elif args.full_test:
+        results = harness.run_adaptive_tests()
         print(harness.generate_test_report(results))
         
         # Exit with error code if any tests failed
