@@ -126,7 +126,7 @@
   - Add environment variable redaction for security
   - _Requirements: 3.1, 3.4_
 
-- [ ]* 5.4 Write security tests
+- [x] 5.4 Write security tests
   - Test path traversal prevention
   - Test timeout enforcement
   - Test output truncation
@@ -164,7 +164,7 @@
   - Add comprehensive error handling and logging
   - _Requirements: 1.1, 4.1, 5.1_
 
-- [ ]* 7.3 Write end-to-end tests
+- [x] 7.3 Write end-to-end tests
   - Test complete MCP request/response cycles
   - Test all tools through MCP interface
   - Test confirmation workflows
