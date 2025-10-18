@@ -140,6 +140,58 @@ def docker_available():
         return False
 
 
+@pytest.fixture
+def sample_policy_yaml():
+    """Provide sample policy YAML content for testing."""
+    return """
+tools:
+  test_tool:
+    description: "Test tool for unit tests"
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 10
+    notify_on: ["success", "failure"]
+    schema:
+      type: "object"
+      properties:
+        test_param:
+          type: "string"
+          description: "Test parameter"
+      required: []
+      additionalProperties: false
+
+  confirm_tool:
+    description: "Tool requiring confirmation"
+    mutates: true
+    requires_confirm: true
+    timeout_sec: 15
+    notify_on: ["success", "failure", "confirmation"]
+    schema:
+      type: "object"
+      properties: {}
+      required: []
+      additionalProperties: false
+
+config:
+  output_truncate_limit: 1024
+  default_timeout_sec: 30
+  max_timeout_sec: 300
+  security:
+    enable_path_validation: true
+    allowed_paths: ["/tmp", "/var/tmp"]
+"""
+
+
+@pytest.fixture
+def test_policy_file(temp_dir):
+    """Create temporary policy files for testing."""
+    def _create_policy_file(filename: str, content: str):
+        policy_file = temp_dir / filename
+        policy_file.write_text(content)
+        return policy_file
+    return _create_policy_file
+
+
 @pytest.fixture(autouse=True)
 def mock_audit_and_notifications(monkeypatch):
     """Automatically mock audit logging and notifications for all tests."""
