@@ -5,20 +5,42 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "burly-mingo-mcp"
 dynamic = ["version"]
-description = "Secure MCP server for system operations"
+description = "Secure MCP server for system operations with Docker integration and policy enforcement"
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [
-    {name = "Burly MCP Team"}
+    {name = "Burly MCP Team", email = "team@burly-mcp.dev"}
+]
+maintainers = [
+    {name = "Burly MCP Team", email = "team@burly-mcp.dev"}
+]
+keywords = [
+    "mcp",
+    "model-context-protocol", 
+    "docker",
+    "security",
+    "policy-enforcement",
+    "audit-logging",
+    "system-operations",
+    "container-management"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Systems Administration",
+    "Topic :: System :: Monitoring",
+    "Topic :: Security",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Environment :: Console",
+    "Framework :: Pydantic",
+    "Typing :: Typed"
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -43,15 +65,15 @@ test = [
 ]
 
 [project.scripts]
-burly-mingo-mcp = "burly_mingo_mcp.server.main:main"
+burly-mingo-mcp = "burly_mcp.server.main:main"
 
 [project.urls]
-Homepage = "https://github.com/your-org/burly-mcp"
-Repository = "https://github.com/your-org/burly-mcp"
-Issues = "https://github.com/your-org/burly-mcp/issues"
+Homepage = "https://github.com/Wolfeitz/BurlyMCP"
+Repository = "https://github.com/Wolfeitz/BurlyMCP"
+Issues = "https://github.com/Wolfeitz/BurlyMCP/issues"
 
 [tool.setuptools.dynamic]
-version = {attr = "burly_mingo_mcp.__version__"}
+version = {attr = "burly_mcp.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -62,7 +84,7 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = [
-    "--cov=burly_mingo_mcp",
+    "--cov=burly_mcp",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
