@@ -309,7 +309,7 @@ class PolicyLoader:
         }
 
         # Override with values from config file
-        config_values = defaults.copy()
+        config_values: Dict[str, Any] = defaults.copy()
         config_values.update(config_data)
 
         # Handle nested security config
@@ -327,12 +327,12 @@ class PolicyLoader:
                 ]
 
         self._config = PolicyConfig(
-            output_truncate_limit=config_values["output_truncate_limit"],
-            default_timeout_sec=config_values["default_timeout_sec"],
-            audit_log_path=config_values["audit_log_path"],
-            blog_stage_root=config_values["blog_stage_root"],
-            blog_publish_root=config_values["blog_publish_root"],
-            allowed_blog_extensions=config_values["allowed_blog_extensions"],
+            output_truncate_limit=int(config_values["output_truncate_limit"]),
+            default_timeout_sec=int(config_values["default_timeout_sec"]),
+            audit_log_path=str(config_values["audit_log_path"]),
+            blog_stage_root=str(config_values["blog_stage_root"]),
+            blog_publish_root=str(config_values["blog_publish_root"]),
+            allowed_blog_extensions=[str(ext) for ext in config_values["allowed_blog_extensions"]],
         )
 
     def get_tool_definition(self, tool_name: str) -> Optional[ToolDefinition]:
@@ -381,6 +381,7 @@ class PolicyLoader:
         if not self._loaded:
             raise RuntimeError("Policy must be loaded before accessing config")
 
+        assert self._config is not None, "Config should be loaded"
         return self._config
 
     def is_loaded(self) -> bool:
@@ -402,7 +403,7 @@ class SchemaValidator:
     and types before tool execution.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize SchemaValidator with JSON Schema 2020-12 support."""
         # Use Draft 2020-12 validator for modern JSON Schema support
         self._validator_class = jsonschema.Draft202012Validator
@@ -551,7 +552,7 @@ class SchemaValidator:
             SchemaValidationError: If schema is too complex
         """
 
-        def count_schema_nodes(obj, depth=0):
+        def count_schema_nodes(obj: Any, depth: int = 0) -> int:
             if depth > 20:  # Max nesting depth
                 raise SchemaValidationError(
                     f"Tool '{tool_name}' schema too deeply nested"

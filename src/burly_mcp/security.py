@@ -20,7 +20,7 @@ Security Principles:
 import logging
 import os
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +252,7 @@ def log_security_violation(
 
     # Send security violation notification
     try:
-        from .notifications import notify_security_violation
+        from .notifications.manager import notify_security_violation
 
         notify_security_violation(
             violation_type=violation_type,
@@ -290,7 +290,7 @@ def check_file_permissions(file_path: str, required_permissions: str = "r") -> b
         return False
 
 
-def get_safe_file_info(file_path: str) -> dict:
+def get_safe_file_info(file_path: str) -> Dict[str, Any]:
     """
     Get safe file information without exposing sensitive system details.
 
