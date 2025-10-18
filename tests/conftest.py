@@ -30,7 +30,7 @@ def mock_env_vars():
         "BLOG_PUBLISH_ROOT": "/tmp/test_blog_publish",
         "DEFAULT_TIMEOUT_SEC": "10",
         "OUTPUT_TRUNCATE_LIMIT": "1024",
-        "AUDIT_LOG_PATH": "/tmp/test_audit.jsonl",
+        "AUDIT_LOG_DIR": "/tmp/test_logs",
         "NOTIFICATIONS_ENABLED": "false",
         "SERVER_NAME": "test-burly-mcp",
         "SERVER_VERSION": "0.0.1-test",
@@ -138,3 +138,36 @@ def docker_available():
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return False
+
+
+@pytest.fixture(autouse=True)
+def mock_audit_and_notifications(monkeypatch):
+    """Automatically mock audit logging and notifications for all tests."""
+    from unittest.mock import Mock
+    
+    # Create mocks
+    mock_audit = Mock()
+    mock_notify_success = Mock()
+    mock_notify_failure = Mock()
+    mock_notify_confirmation = Mock()
+    
+    # Mock audit logging - patch where it's imported
+    monkeypatch.setattr("burly_mcp.tools.registry.log_tool_execution", mock_audit)
+    monkeypatch.setattr("burly_mcp.audit.get_audit_logger", Mock())
+    
+    # Mock notifications - patch where they're imported
+    monkeypatch.setattr("burly_mcp.tools.registry.notify_tool_success", mock_notify_success)
+    monkeypatch.setattr("burly_mcp.tools.registry.notify_tool_failure", mock_notify_failure)
+    monkeypatch.setattr("burly_mcp.tools.registry.notify_tool_confirmation", mock_notify_confirmation)
+    
+    # Set test-friendly environment variables
+    monkeypatch.setenv("AUDIT_LOG_DIR", "/tmp/test_logs")
+    monkeypatch.setenv("NOTIFICATIONS_ENABLED", "false")
+    
+    # Return mocks for tests that need to access them
+    return {
+        "audit": mock_audit,
+        "notify_success": mock_notify_success,
+        "notify_failure": mock_notify_failure,
+        "notify_confirmation": mock_notify_confirmation,
+    }

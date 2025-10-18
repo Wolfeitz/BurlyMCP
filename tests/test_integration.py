@@ -18,8 +18,8 @@ import pytest
 import requests
 import yaml
 
-from server.tools import ToolRegistry, ToolResult
-from server.resource_limits import ExecutionResult
+from burly_mcp.tools.registry import ToolRegistry, ToolResult
+from burly_mcp.resource_limits import ExecutionResult
 
 
 class TestDockerIntegration:
@@ -44,7 +44,7 @@ class TestDockerIntegration:
         self.notify_success_patcher.stop()
         self.notify_failure_patcher.stop()
 
-    @patch('server.tools.execute_with_timeout')
+    @patch('burly_mcp.tools.registry.execute_with_timeout')
     def test_docker_ps_success_with_containers(self, mock_execute):
         """Test docker_ps with successful container listing."""
         # Mock successful docker ps output
@@ -99,7 +99,7 @@ def456ghi789	redis:alpine	"docker-entrypoint.s…"	1 hour ago	Up 1 hour	6379/tcp
         assert call_args["command"][1] == "ps"
         assert "--format" in call_args["command"]
 
-    @patch('server.tools.execute_with_timeout')
+    @patch('burly_mcp.tools.registry.execute_with_timeout')
     def test_docker_ps_no_containers(self, mock_execute):
         """Test docker_ps with no running containers."""
         # Mock docker ps output with only header
@@ -128,7 +128,7 @@ def456ghi789	redis:alpine	"docker-entrypoint.s…"	1 hour ago	Up 1 hour	6379/tcp
         assert result.data["count"] == 0
         assert len(result.data["containers"]) == 0
 
-    @patch('server.tools.execute_with_timeout')
+    @patch('burly_mcp.tools.registry.execute_with_timeout')
     def test_docker_ps_permission_denied(self, mock_execute):
         """Test docker_ps with permission denied error."""
         mock_result = ExecutionResult(
@@ -154,7 +154,7 @@ def456ghi789	redis:alpine	"docker-entrypoint.s…"	1 hour ago	Up 1 hour	6379/tcp
         assert result.exit_code == 1
         assert "permission denied" in result.data["error"]
 
-    @patch('server.tools.execute_with_timeout')
+    @patch('burly_mcp.tools.registry.execute_with_timeout')
     def test_docker_ps_daemon_not_running(self, mock_execute):
         """Test docker_ps when Docker daemon is not running."""
         mock_result = ExecutionResult(
@@ -179,7 +179,7 @@ def456ghi789	redis:alpine	"docker-entrypoint.s…"	1 hour ago	Up 1 hour	6379/tcp
         assert "Cannot connect to Docker daemon - is Docker running?" in result.summary
         assert result.exit_code == 1
 
-    @patch('server.tools.execute_with_timeout')
+    @patch('burly_mcp.tools.registry.execute_with_timeout')
     def test_docker_ps_command_not_found(self, mock_execute):
         """Test docker_ps when Docker CLI is not installed."""
         mock_result = ExecutionResult(
@@ -204,7 +204,7 @@ def456ghi789	redis:alpine	"docker-entrypoint.s…"	1 hour ago	Up 1 hour	6379/tcp
         assert "Docker CLI not found - is Docker installed?" in result.summary
         assert result.exit_code == 127
 
-    @patch('server.tools.execute_with_timeout')
+    @patch('burly_mcp.tools.registry.execute_with_timeout')
     def test_docker_ps_timeout(self, mock_execute):
         """Test docker_ps with command timeout."""
         mock_result = ExecutionResult(
@@ -229,7 +229,7 @@ def456ghi789	redis:alpine	"docker-entrypoint.s…"	1 hour ago	Up 1 hour	6379/tcp
         assert "Docker command timed out" in result.summary
         assert result.data["timed_out"] is True
 
-    @patch('server.tools.execute_with_timeout')
+    @patch('burly_mcp.tools.registry.execute_with_timeout')
     def test_docker_ps_output_truncation(self, mock_execute):
         """Test docker_ps with truncated output."""
         # Create large output that would be truncated
@@ -285,7 +285,7 @@ class TestFileSystemIntegration:
         self.notify_failure_patcher.stop()
         self.notify_confirm_patcher.stop()
 
-    @patch('server.tools.execute_with_timeout')
+    @patch('burly_mcp.tools.registry.execute_with_timeout')
     def test_disk_space_success(self, mock_execute):
         """Test disk_space with successful filesystem listing."""
         # Mock successful df -hT output
@@ -343,7 +343,7 @@ tmpfs          tmpfs     2.0G     0  2.0G   0% /dev/shm
         # Verify summary includes warning
         assert "1 with >80% usage: /home" in result.summary
 
-    @patch('server.tools.execute_with_timeout')
+    @patch('burly_mcp.tools.registry.execute_with_timeout')
     def test_disk_space_healthy_usage(self, mock_execute):
         """Test disk_space with all filesystems having healthy usage."""
         # Mock df output with low usage
@@ -374,7 +374,7 @@ tmpfs          tmpfs     2.0G     0  2.0G   0% /dev/shm
         assert "all with healthy usage levels" in result.summary
         assert len(result.data["high_usage"]) == 0
 
-    @patch('server.tools.execute_with_timeout')
+    @patch('burly_mcp.tools.registry.execute_with_timeout')
     def test_disk_space_permission_denied(self, mock_execute):
         """Test disk_space with permission denied error."""
         mock_result = ExecutionResult(
@@ -881,10 +881,10 @@ class TestToolRegistryIntegration:
         for tool in expected_tools:
             assert tool in available_tools
 
-    def test_tool_execution_audit_and_notification(self):
+    def test_tool_execution_audit_and_notification(self, mock_audit_and_notifications):
         """Test that tool execution triggers audit logging and notifications."""
         # Mock successful docker_ps execution
-        with patch('server.tools.execute_with_timeout') as mock_execute:
+        with patch('burly_mcp.tools.registry.execute_with_timeout') as mock_execute:
             mock_result = ExecutionResult(
                 success=True,
                 exit_code=0,
@@ -906,23 +906,23 @@ class TestToolRegistryIntegration:
         assert result.success is True
 
         # Verify audit logging was called (mocked in setup)
-        self.mock_audit.assert_called_once()
-        audit_call = self.mock_audit.call_args[1]
+        mock_audit_and_notifications["audit"].assert_called_once()
+        audit_call = mock_audit_and_notifications["audit"].call_args[1]
         assert audit_call["tool_name"] == "docker_ps"
         assert audit_call["status"] == "ok"
         assert audit_call["mutates"] is False
         assert audit_call["requires_confirm"] is False
 
         # Verify notification was sent (mocked in setup)
-        self.mock_notify_success.assert_called_once()
-        notify_call = self.mock_notify_success.call_args[0]
+        mock_audit_and_notifications["notify_success"].assert_called_once()
+        notify_call = mock_audit_and_notifications["notify_success"].call_args[0]
         assert notify_call[0] == "docker_ps"  # tool_name
         assert "Found 0 running containers" in notify_call[1]  # summary
 
-    def test_tool_execution_failure_audit_and_notification(self):
+    def test_tool_execution_failure_audit_and_notification(self, mock_audit_and_notifications):
         """Test that failed tool execution triggers appropriate audit and notifications."""
         # Mock failed docker_ps execution
-        with patch('server.tools.execute_with_timeout') as mock_execute:
+        with patch('burly_mcp.tools.registry.execute_with_timeout') as mock_execute:
             mock_result = ExecutionResult(
                 success=False,
                 exit_code=1,
@@ -944,15 +944,15 @@ class TestToolRegistryIntegration:
         assert result.success is False
 
         # Verify audit logging was called with failure status (mocked in setup)
-        self.mock_audit.assert_called_once()
-        audit_call = self.mock_audit.call_args[1]
+        mock_audit_and_notifications["audit"].assert_called_once()
+        audit_call = mock_audit_and_notifications["audit"].call_args[1]
         assert audit_call["tool_name"] == "docker_ps"
         assert audit_call["status"] == "fail"
         assert audit_call["exit_code"] == 1
 
         # Verify failure notification was sent (mocked in setup)
-        self.mock_notify_failure.assert_called_once()
-        notify_call = self.mock_notify_failure.call_args[0]
+        mock_audit_and_notifications["notify_failure"].assert_called_once()
+        notify_call = mock_audit_and_notifications["notify_failure"].call_args[0]
         assert notify_call[0] == "docker_ps"  # tool_name
         assert notify_call[2] == 1  # exit_code
 
