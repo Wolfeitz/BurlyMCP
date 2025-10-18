@@ -132,18 +132,6 @@ extend-exclude = '''
   | build
   | dist
 )/
-'''$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.mypy_cache
-  | \.pytest_cache
-  | \.venv
-  | build
-  | dist
-)/
 '''
 
 [tool.mypy]
