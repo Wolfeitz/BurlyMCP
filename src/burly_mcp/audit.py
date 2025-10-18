@@ -386,9 +386,13 @@ class AuditLogger:
 _audit_logger: Optional[AuditLogger] = None
 
 
-def get_audit_logger() -> AuditLogger:
+def get_audit_logger(log_file_path: Optional[str] = None) -> AuditLogger:
     """
     Get the global audit logger instance.
+
+    Args:
+        log_file_path: Optional path to the audit log file. If provided and no
+                      global logger exists, creates a new logger with this path.
 
     Returns:
         AuditLogger: The global audit logger instance
@@ -396,7 +400,7 @@ def get_audit_logger() -> AuditLogger:
     global _audit_logger
 
     if _audit_logger is None:
-        _audit_logger = AuditLogger()
+        _audit_logger = AuditLogger(log_file_path=log_file_path)
 
     return _audit_logger
 
