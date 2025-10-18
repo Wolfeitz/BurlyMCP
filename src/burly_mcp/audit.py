@@ -281,7 +281,7 @@ class AuditLogger:
             bool: True if value contains sensitive environment variable references
         """
         if not isinstance(value, str):
-            return False
+            return False  # type: ignore[unreachable]
 
         # Check for environment variable patterns
         for env_var in self.sensitive_env_vars:
