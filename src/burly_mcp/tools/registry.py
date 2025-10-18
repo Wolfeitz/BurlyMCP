@@ -84,7 +84,7 @@ class ToolRegistry:
     for the MCP protocol handler.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the tool registry with available tools."""
         self.tools = {
             "docker_ps": self._docker_ps,
@@ -438,10 +438,12 @@ class ToolRegistry:
 
                 # Generate summary with high usage warnings
                 fs_count = len(filesystems)
-                high_usage_fs = [fs for fs in filesystems if fs["usage_int"] > 80]
+                high_usage_fs = [
+                    fs for fs in filesystems if int(str(fs["usage_int"])) > 80
+                ]
 
                 if high_usage_fs:
-                    high_usage_names = [fs["mounted_on"] for fs in high_usage_fs]
+                    high_usage_names = [str(fs["mounted_on"]) for fs in high_usage_fs]
                     summary = f"Found {fs_count} filesystems, {len(high_usage_fs)} with >80% usage: {', '.join(high_usage_names)}"
                 else:
                     summary = (
@@ -625,7 +627,7 @@ class ToolRegistry:
 
             # Parse YAML front-matter
             validation_errors = []
-            front_matter = {}
+            front_matter: Dict[str, Any] = {}
 
             # Check for YAML front-matter delimiters
             if not content.startswith("---\n"):

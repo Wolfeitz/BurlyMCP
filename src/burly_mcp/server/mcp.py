@@ -14,7 +14,10 @@ import sys
 import time
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +87,7 @@ class MCPResponse:
     metrics: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """
         Post-initialization processing to ensure response consistency.
 
@@ -109,7 +112,7 @@ class MCPResponse:
         if not self.summary:
             self.summary = "Operation completed" if self.ok else "Operation failed"
 
-    def _truncate_output(self, max_length: int = 10000):
+    def _truncate_output(self, max_length: int = 10000) -> None:
         """
         Truncate stdout/stderr if they exceed maximum length.
 
@@ -123,7 +126,7 @@ class MCPResponse:
                 self.stdout[: max_length - len(truncation_indicator)]
                 + truncation_indicator
             )
-            if "stdout_trunc" not in self.metrics:
+            if self.metrics is not None and "stdout_trunc" not in self.metrics:
                 self.metrics["stdout_trunc"] = len(self.stdout)
 
         if len(self.stderr) > max_length:
@@ -131,7 +134,7 @@ class MCPResponse:
                 self.stderr[: max_length - len(truncation_indicator)]
                 + truncation_indicator
             )
-            if "stderr_trunc" not in self.metrics:
+            if self.metrics is not None and "stderr_trunc" not in self.metrics:
                 self.metrics["stderr_trunc"] = len(self.stderr)
 
     def to_json(self) -> Dict[str, Any]:
@@ -245,7 +248,7 @@ class MCPProtocolHandler:
     and response formatting for the MCP protocol.
     """
 
-    def __init__(self, tool_registry=None):
+    def __init__(self, tool_registry: Optional["ToolRegistry"] = None):
         """
         Initialize the MCP protocol handler.
 
@@ -256,7 +259,7 @@ class MCPProtocolHandler:
         self.tool_registry = tool_registry
 
         # Security: Rate limiting to prevent DoS
-        self._request_times = []
+        self._request_times: List[float] = []
         self._max_requests_per_minute = 60
         self._request_window = 60  # seconds
 
@@ -296,7 +299,7 @@ class MCPProtocolHandler:
         except Exception as e:
             raise ValueError(f"Failed to parse request: {e}")
 
-    def _count_json_nodes(self, obj, depth=0) -> int:
+    def _count_json_nodes(self, obj: Any, depth: int = 0) -> int:
         """
         Count JSON object nodes to prevent complexity attacks.
 
@@ -689,7 +692,7 @@ class MCPProtocolHandler:
                     self.write_response(response)
 
                     logger.debug(
-                        f"Request completed in {response.metrics.get('elapsed_ms', 0)}ms"
+                        f"Request completed in {response.metrics.get('elapsed_ms', 0) if response.metrics else 0}ms"
                     )
 
                 except ValueError as e:

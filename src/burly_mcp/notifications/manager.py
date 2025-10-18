@@ -350,7 +350,7 @@ class NotificationManager:
     application while handling the complexity of multiple providers.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the notification manager."""
         self.providers: List[NotificationProvider] = []
         self.enabled = self._is_notifications_enabled()

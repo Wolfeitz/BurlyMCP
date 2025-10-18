@@ -95,7 +95,8 @@ def setup_logging() -> logging.Logger:
         root_logger.addHandler(file_handler)
     except (OSError, PermissionError) as e:
         # If we can't write to log file, continue with console only
-        console_handler.warning(f"Could not set up file logging: {e}")
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Could not set up file logging: {e}")
 
     return logging.getLogger(__name__)
 
@@ -183,7 +184,7 @@ def initialize_policy_engine(
 
 def initialize_audit_system(
     config: Dict[str, Any], logger: logging.Logger
-) -> AuditLogger:
+) -> Optional[AuditLogger]:
     """
     Initialize the audit logging system.
 
@@ -196,7 +197,7 @@ def initialize_audit_system(
     """
     try:
         # Get the global audit logger (creates if needed)
-        audit_logger = get_audit_logger(config['audit_log_path'])
+        audit_logger = get_audit_logger(config["audit_log_path"])
 
         logger.info(f"Audit logging initialized: {config['audit_log_path']}")
         return audit_logger
@@ -253,7 +254,7 @@ def setup_signal_handlers(logger: logging.Logger) -> None:
         logger: Logger instance
     """
 
-    def signal_handler(signum, frame):
+    def signal_handler(signum: int, frame: Any) -> None:
         signal_name = signal.Signals(signum).name
         logger.info(f"Received {signal_name}, initiating graceful shutdown...")
 

@@ -369,12 +369,12 @@ class ResourceMonitor:
     more sophisticated resource limiting in the future.
     """
 
-    def __init__(self):
-        self.start_time = None
+    def __init__(self) -> None:
+        self.start_time: Optional[float] = None
         self.peak_memory = 0
         self.cpu_time = 0
 
-    def start_monitoring(self):
+    def start_monitoring(self) -> None:
         """Start resource monitoring."""
         self.start_time = time.time()
         # TODO: Implement actual resource monitoring

@@ -25,6 +25,7 @@ ENV PYTHONUNBUFFERED=1 \
 # Install Python dependencies
 WORKDIR /app
 COPY pyproject.toml ./
+COPY src/ ./src/
 RUN pip install --upgrade pip setuptools wheel && \
     pip install -e .
 

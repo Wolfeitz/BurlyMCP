@@ -230,20 +230,20 @@ class AuditLogger:
             logger.warning(f"Failed to hash arguments: {str(e)}")
             return "hash_error"
 
-    def _sanitize_args(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    def _sanitize_args(self, args: Any) -> Any:
         """
         Sanitize arguments by removing or redacting sensitive information.
 
         Args:
-            args: Original arguments dictionary
+            args: Original arguments (usually dictionary)
 
         Returns:
-            dict: Sanitized arguments dictionary
+            Sanitized arguments
         """
         if not isinstance(args, dict):
             return args
 
-        sanitized = {}
+        sanitized: Dict[str, Any] = {}
 
         for key, value in args.items():
             key_lower = key.lower()
@@ -281,7 +281,7 @@ class AuditLogger:
             bool: True if value contains sensitive environment variable references
         """
         if not isinstance(value, str):
-            return False
+            return False  # type: ignore[unreachable]
 
         # Check for environment variable patterns
         for env_var in self.sensitive_env_vars:
@@ -333,7 +333,7 @@ class AuditLogger:
             if not os.path.exists(self.log_file_path):
                 return {"error": "audit_log_not_found"}
 
-            stats = {
+            stats: Dict[str, Any] = {
                 "total_operations": 0,
                 "successful_operations": 0,
                 "failed_operations": 0,
