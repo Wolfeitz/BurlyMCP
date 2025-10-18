@@ -370,7 +370,7 @@ class ResourceMonitor:
     """
 
     def __init__(self) -> None:
-        self.start_time = None
+        self.start_time: Optional[float] = None
         self.peak_memory = 0
         self.cpu_time = 0
 

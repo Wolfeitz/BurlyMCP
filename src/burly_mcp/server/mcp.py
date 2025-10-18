@@ -14,7 +14,10 @@ import sys
 import time
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +248,7 @@ class MCPProtocolHandler:
     and response formatting for the MCP protocol.
     """
 
-    def __init__(self, tool_registry=None):
+    def __init__(self, tool_registry: Optional["ToolRegistry"] = None):
         """
         Initialize the MCP protocol handler.
 
@@ -256,7 +259,7 @@ class MCPProtocolHandler:
         self.tool_registry = tool_registry
 
         # Security: Rate limiting to prevent DoS
-        self._request_times = []
+        self._request_times: List[float] = []
         self._max_requests_per_minute = 60
         self._request_window = 60  # seconds
 
@@ -296,7 +299,7 @@ class MCPProtocolHandler:
         except Exception as e:
             raise ValueError(f"Failed to parse request: {e}")
 
-    def _count_json_nodes(self, obj, depth=0) -> int:
+    def _count_json_nodes(self, obj: Any, depth: int = 0) -> int:
         """
         Count JSON object nodes to prevent complexity attacks.
 
@@ -689,7 +692,7 @@ class MCPProtocolHandler:
                     self.write_response(response)
 
                     logger.debug(
-                        f"Request completed in {response.metrics.get('elapsed_ms', 0)}ms"
+                        f"Request completed in {response.metrics.get('elapsed_ms', 0) if response.metrics else 0}ms"
                     )
 
                 except ValueError as e:
