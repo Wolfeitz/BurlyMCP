@@ -438,7 +438,9 @@ class ToolRegistry:
 
                 # Generate summary with high usage warnings
                 fs_count = len(filesystems)
-                high_usage_fs = [fs for fs in filesystems if int(str(fs["usage_int"])) > 80]
+                high_usage_fs = [
+                    fs for fs in filesystems if int(str(fs["usage_int"])) > 80
+                ]
 
                 if high_usage_fs:
                     high_usage_names = [str(fs["mounted_on"]) for fs in high_usage_fs]

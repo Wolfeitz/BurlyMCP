@@ -332,7 +332,9 @@ class PolicyLoader:
             audit_log_path=str(config_values["audit_log_path"]),
             blog_stage_root=str(config_values["blog_stage_root"]),
             blog_publish_root=str(config_values["blog_publish_root"]),
-            allowed_blog_extensions=[str(ext) for ext in config_values["allowed_blog_extensions"]],
+            allowed_blog_extensions=[
+                str(ext) for ext in config_values["allowed_blog_extensions"]
+            ],
         )
 
     def get_tool_definition(self, tool_name: str) -> Optional[ToolDefinition]:
