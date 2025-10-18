@@ -970,5 +970,4 @@ class TestToolRegistryIntegration:
 
         # Test non-existent tool (should return defaults)
         assert self.registry._tool_mutates("nonexistent") is False
-        assert self.registry._tool_requires_confirm("nonexistent") is False 
-       assert self.registry._tool_requires_confirm("nonexistent") is False
+        assert self.registry._tool_requires_confirm("nonexistent") is False
