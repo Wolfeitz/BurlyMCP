@@ -84,7 +84,7 @@ class MCPResponse:
     metrics: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """
         Post-initialization processing to ensure response consistency.
 
@@ -109,7 +109,7 @@ class MCPResponse:
         if not self.summary:
             self.summary = "Operation completed" if self.ok else "Operation failed"
 
-    def _truncate_output(self, max_length: int = 10000):
+    def _truncate_output(self, max_length: int = 10000) -> None:
         """
         Truncate stdout/stderr if they exceed maximum length.
 
@@ -123,7 +123,7 @@ class MCPResponse:
                 self.stdout[: max_length - len(truncation_indicator)]
                 + truncation_indicator
             )
-            if "stdout_trunc" not in self.metrics:
+            if self.metrics is not None and "stdout_trunc" not in self.metrics:
                 self.metrics["stdout_trunc"] = len(self.stdout)
 
         if len(self.stderr) > max_length:
@@ -131,7 +131,7 @@ class MCPResponse:
                 self.stderr[: max_length - len(truncation_indicator)]
                 + truncation_indicator
             )
-            if "stderr_trunc" not in self.metrics:
+            if self.metrics is not None and "stderr_trunc" not in self.metrics:
                 self.metrics["stderr_trunc"] = len(self.stderr)
 
     def to_json(self) -> Dict[str, Any]:
