@@ -1,18 +1,18 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "burly-mcp"
-version = "0.1.0"
-description = "A secure, policy-driven Model Context Protocol (MCP) server for system operations"
+dynamic = ["version"]
+description = "Secure MCP server for system operations"
 readme = "README.md"
-license = {text = "MIT"}
+license = {file = "LICENSE"}
 authors = [
-    {name = "Burly MCP Contributors"}
+    {name = "Burly MCP Team"}
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -22,44 +22,69 @@ classifiers = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "pydantic>=2.5.0",
-    "pyyaml>=6.0.1",
-    "jsonschema>=4.20.0",
-    "requests>=2.31.0",
-    "docker>=7.0.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4.0",
-    "pytest-cov>=4.1.0",
-    "pytest-asyncio>=0.21.0",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
     "black>=23.0.0",
-    "isort>=5.12.0",
     "flake8>=6.0.0",
-    "mypy>=1.7.0",
-    "pre-commit>=3.5.0",
+    "mypy>=1.0.0",
+    "bandit>=1.7.0",
+    "pip-audit>=2.0.0",
 ]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.0.0",
+]
+
+[project.scripts]
+burly-mcp = "burly_mcp.server.main:main"
 
 [project.urls]
 Homepage = "https://github.com/your-org/burly-mcp"
 Repository = "https://github.com/your-org/burly-mcp"
 Issues = "https://github.com/your-org/burly-mcp/issues"
 
-[project.scripts]
-burly-mcp = "server.main:main"
+[tool.setuptools.dynamic]
+version = {attr = "burly_mcp.__version__"}
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["server*"]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--cov=burly_mcp",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-fail-under=80",
+]
 
 [tool.black]
 line-length = 88
 target-version = ['py312']
-
-[tool.isort]
-profile = "black"
-line_length = 88
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.mypy_cache
+  | \.pytest_cache
+  | \.venv
+  | build
+  | dist
+)/
+'''
 
 [tool.mypy]
 python_version = "3.12"
@@ -76,16 +101,6 @@ warn_no_return = true
 warn_unreachable = true
 strict_equality = true
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = [
-    "--strict-markers",
-    "--strict-config",
-    "--cov=server",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-fail-under=80"
-]
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "build"]
+skips = ["B101"]  # Skip assert_used test
