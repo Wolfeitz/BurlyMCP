@@ -4,29 +4,41 @@ This directory contains comprehensive documentation for the Burly MCP server.
 
 ## Documentation Structure
 
-- `runbook.md` - Operational deployment and management guide
-- `config.md` - Complete configuration reference
-- `security.md` - Security model and threat analysis
-- `mcp-explained.md` - Introduction to Model Context Protocol
-- `open-webui.md` - Integration guide for Open WebUI
+- [`api/`](api/) - API documentation and specifications
+- [`contributing/`](contributing/) - Contributor guidelines and development docs
+- [`security/`](security/) - Security documentation and threat model
 
 ## Quick Start
 
-For immediate setup instructions, see the main [README.md](../README.md) in the project root.
+For quick setup instructions, see the main [README.md](../README.md) in the project root.
 
-## Contributing
+## Documentation Categories
 
-When adding new features or tools, please update the relevant documentation:
+### API Documentation
+- MCP Protocol implementation details
+- Tool schemas and specifications
+- Response format documentation
 
-1. Add tool descriptions to `config.md`
-2. Update security considerations in `security.md`
-3. Include integration examples in `open-webui.md`
-4. Update operational procedures in `runbook.md`
+### Contributing
+- Development environment setup
+- Code style guidelines
+- Testing procedures
+- Pull request process
 
-## Documentation Standards
+### Security
+- Security architecture overview
+- Threat model and mitigations
+- Security best practices
+- Vulnerability reporting
 
-- Use clear, beginner-friendly language
-- Include practical examples and code snippets
-- Explain the "why" behind configuration choices
-- Highlight security implications of settings
-- Provide troubleshooting guidance for common issues
+## Building Documentation
+
+Documentation can be built using Sphinx (when configured):
+
+```bash
+# Install documentation dependencies
+pip install -e ".[dev]"
+
+# Build documentation
+sphinx-build -b html docs/ docs/_build/
+```

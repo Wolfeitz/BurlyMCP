@@ -1,315 +1,345 @@
-# Security Guide
+# Security Documentation
 
-## Overview
-
-Burly MCP is designed with security as a primary concern, implementing defense-in-depth strategies to safely enable AI assistants to perform system operations. This document outlines the threat model, security controls, and mitigation strategies.
-
-## Threat Model
-
-### Assets Protected
-- **Host system**: Files, processes, and system resources
-- **Docker environment**: Containers and Docker daemon
-- **Blog content**: Staged and published content
-- **Audit logs**: Operation history and security events
-- **Configuration**: Policy files and environment settings
-
-### Threat Actors
-- **Malicious AI prompts**: Attempts to manipulate the AI into performing unauthorized actions
-- **Compromised AI assistant**: AI system that has been compromised or is behaving unexpectedly
-- **External attackers**: Network-based attacks against the MCP server
-- **Insider threats**: Authorized users attempting to exceed their permissions
-- **Supply chain attacks**: Compromised dependencies or container images
-
-### Attack Vectors
-- **Command injection**: Attempts to execute arbitrary commands
-- **Path traversal**: Attempts to access files outside allowed directories
-- **Resource exhaustion**: Attempts to consume excessive CPU, memory, or disk
-- **Privilege escalation**: Attempts to gain higher system privileges
-- **Data exfiltration**: Attempts to read sensitive system information
-- **Configuration tampering**: Attempts to modify security policies
+Burly MCP is designed with security as a primary concern. This document outlines the security architecture, threat model, and best practices for secure deployment and operation.
 
 ## Security Architecture
 
-### Defense Layers
+### Defense in Depth
 
-```mermaid
-graph TB
-    A[AI Assistant] -->|MCP Protocol| B[Input Validation]
-    B --> C[Policy Engine]
-    C --> D[Sandboxed Execution]
-    D --> E[Resource Limits]
-    E --> F[Audit Logging]
-    F --> G[System Resources]
-    
-    H[Container Isolation] --> D
-    I[File System Boundaries] --> D
-    J[Network Isolation] --> D
-```
+Burly MCP implements multiple layers of security controls:
 
-### Security Controls
+1. **Input Validation**: All inputs validated against JSON schemas
+2. **Policy Engine**: Whitelist-based tool execution with explicit permissions
+3. **Audit Logging**: Comprehensive logging of all operations
+4. **Container Security**: Non-root execution with minimal privileges
+5. **Secret Management**: Secure handling of sensitive configuration
+6. **Network Isolation**: Minimal network exposure
 
-#### 1. Input Validation and Sanitization
-- **JSON Schema Validation**: All tool arguments validated against strict schemas
-- **Pattern Matching**: File paths restricted to safe character sets
-- **Length Limits**: Input size limits prevent buffer overflow attacks
-- **Type Checking**: Strong typing prevents injection attacks
+### Security Principles
 
-#### 2. Policy-Based Access Control
-- **Whitelist Approach**: Only explicitly defined tools are available
-- **Granular Permissions**: Each tool has specific capabilities and restrictions
-- **Confirmation Gates**: Mutating operations require explicit confirmation
-- **Schema Enforcement**: Tool arguments must match predefined schemas
+- **Least Privilege**: Minimal permissions for all operations
+- **Fail Secure**: Default to deny access when in doubt
+- **Defense in Depth**: Multiple security layers
+- **Audit Everything**: Comprehensive logging for compliance
+- **Zero Trust**: Verify all inputs and operations
 
-#### 3. Container Isolation
-- **Non-root Execution**: Runs as unprivileged user (uid 1000)
-- **Read-only Filesystem**: Container filesystem is immutable
-- **No New Privileges**: Prevents privilege escalation within container
-- **Resource Limits**: CPU and memory usage constrained
+## Threat Model
 
-#### 4. File System Security
-- **Path Traversal Prevention**: All file operations validated against allowed roots
-- **Directory Boundaries**: Blog operations confined to specific directories
-- **Mount Restrictions**: Volumes mounted with minimal necessary permissions
-- **Symbolic Link Protection**: Prevents symlink-based path traversal
+### Assets
 
-#### 5. Process Isolation
-- **Command Whitelisting**: Only predefined commands can be executed
-- **Timeout Enforcement**: All operations have maximum execution time
-- **Output Truncation**: Prevents memory exhaustion from verbose output
-- **Signal Handling**: Proper cleanup on termination
+- **System Access**: Docker socket and file system access
+- **Configuration Data**: Policy files and environment variables
+- **Audit Logs**: Security and compliance records
+- **Blog Content**: User-generated content and publications
+- **Notification Channels**: External service integrations
 
-## Specific Threat Mitigations
+### Threats
 
-### Command Injection Prevention
+#### High Risk
 
-**Threat**: Malicious input attempting to execute arbitrary commands
-```
-# Malicious attempt
-{"file_path": "test.md; rm -rf /"}
-```
+1. **Arbitrary Code Execution**
+   - **Mitigation**: Whitelist-based tool execution, input validation
+   - **Detection**: Audit logging, command validation
 
-**Mitigation**:
-- JSON Schema pattern validation restricts file paths to safe characters
-- No shell interpretation - commands executed directly via subprocess
-- Argument validation prevents command chaining
+2. **Path Traversal Attacks**
+   - **Mitigation**: Path validation, chroot-like restrictions
+   - **Detection**: Path pattern monitoring, audit logs
+
+3. **Privilege Escalation**
+   - **Mitigation**: Non-root container execution, capability dropping
+   - **Detection**: Process monitoring, audit logging
+
+4. **Secret Exposure**
+   - **Mitigation**: Environment variables, Docker secrets
+   - **Detection**: Secret scanning, audit logs
+
+#### Medium Risk
+
+1. **Denial of Service**
+   - **Mitigation**: Resource limits, timeouts, rate limiting
+   - **Detection**: Performance monitoring, audit logs
+
+2. **Information Disclosure**
+   - **Mitigation**: Output filtering, access controls
+   - **Detection**: Audit logging, content analysis
+
+3. **Configuration Tampering**
+   - **Mitigation**: Read-only configuration, validation
+   - **Detection**: File integrity monitoring
+
+### Attack Vectors
+
+- **MCP Protocol**: Malicious tool requests or parameters
+- **File Operations**: Path traversal or unauthorized access
+- **Docker Socket**: Container escape or privilege escalation
+- **Environment Variables**: Secret injection or manipulation
+- **Network Services**: External service compromise
+
+## Security Controls
+
+### Input Validation
+
+All tool inputs are validated against strict JSON schemas:
 
 ```yaml
-# Schema prevents injection
+# Example: File path validation
 file_path:
   type: "string"
-  pattern: "^[a-zA-Z0-9._/-]+\\.md$"  # Only safe characters
+  pattern: "^[a-zA-Z0-9._/-]+\\.md$"
+  maxLength: 255
 ```
 
-### Path Traversal Prevention
+**Security Features:**
+- Pattern matching for safe characters only
+- Length limits to prevent buffer overflows
+- Type validation to prevent injection attacks
+- Additional properties rejection
 
-**Threat**: Attempts to access files outside allowed directories
-```
-# Malicious attempt
-{"file_path": "../../../etc/passwd"}
-```
+### Policy Engine
 
-**Mitigation**:
-- All file paths resolved and validated against allowed roots
-- Symbolic links resolved before path checking
-- Container filesystem boundaries enforced
+The policy engine enforces security policies through:
 
-```python
-# Path validation example
-def validate_path(path: str, allowed_root: str) -> bool:
-    resolved = os.path.realpath(path)
-    allowed = os.path.realpath(allowed_root)
-    return resolved.startswith(allowed + os.sep)
-```
-
-### Resource Exhaustion Prevention
-
-**Threat**: Attempts to consume excessive system resources
-
-**Mitigations**:
-- **CPU Limits**: Container limited to 0.5 CPU cores
-- **Memory Limits**: Container limited to 512MB RAM
-- **Timeout Enforcement**: All operations terminated after configured timeout
-- **Output Truncation**: Large outputs truncated to prevent memory exhaustion
-
-```yaml
-# Docker resource limits
-deploy:
-  resources:
-    limits:
-      memory: 512M
-      cpus: '0.5'
-```
-
-### Privilege Escalation Prevention
-
-**Threat**: Attempts to gain higher system privileges
-
-**Mitigations**:
-- **Non-root User**: Container runs as uid 1000 with no sudo access
-- **No New Privileges**: Container security option prevents privilege escalation
-- **Read-only Filesystem**: Prevents modification of system files
-- **Minimal Capabilities**: No special Linux capabilities granted
-
-### Information Disclosure Prevention
-
-**Threat**: Attempts to read sensitive system information
-
-**Mitigations**:
-- **Limited Tool Set**: Only whitelisted operations available
-- **Output Filtering**: Sensitive information filtered from responses
-- **Environment Redaction**: Sensitive environment variables redacted from logs
-- **Error Message Sanitization**: Error messages don't expose system details
-
-### Configuration Tampering Prevention
-
-**Threat**: Attempts to modify security policies or configuration
-
-**Mitigations**:
-- **Read-only Policy Mount**: Policy files mounted read-only in container
-- **Immutable Container**: Container filesystem is read-only
-- **External Configuration**: Environment variables set outside container
-- **Audit Trail**: All operations logged for forensic analysis
-
-## Security Monitoring
+- **Whitelist-Only Execution**: Only explicitly defined tools can run
+- **Permission Matrices**: Fine-grained access controls per tool
+- **Confirmation Requirements**: Dangerous operations require explicit approval
+- **Resource Limits**: Timeouts and output size restrictions
 
 ### Audit Logging
 
-All operations are logged with comprehensive details:
+Comprehensive audit logging captures:
 
 ```json
 {
-  "ts": "2024-01-15T10:30:00Z",
-  "tool": "blog_publish_static",
+  "timestamp": "2024-01-01T12:00:00Z",
+  "tool_name": "docker_ps",
+  "user_context": "mcp_session_123",
+  "execution_status": "success",
+  "execution_time_ms": 150,
   "args_hash": "sha256:abc123...",
-  "mutates": true,
-  "requires_confirm": true,
-  "status": "ok",
-  "exit_code": 0,
-  "elapsed_ms": 1250,
-  "caller": "open-webui-user",
-  "stdout_trunc": 0,
-  "stderr_trunc": 0
+  "output_size": 1024,
+  "security_flags": []
 }
 ```
 
-### Security Events
+**Audit Features:**
+- Structured JSON logging for analysis
+- Sensitive data redaction
+- Tamper-evident log format
+- Retention policies for compliance
 
-Monitor audit logs for these security indicators:
+### Container Security
 
-- **Repeated failures**: Multiple failed operations from same source
-- **Path traversal attempts**: File paths outside allowed boundaries
-- **Timeout violations**: Operations exceeding configured limits
-- **Schema violations**: Invalid arguments or unexpected tool calls
-- **Confirmation bypasses**: Attempts to skip required confirmations
+#### Non-Root Execution
 
-### Alerting Strategy
+```dockerfile
+# Create non-privileged user
+RUN useradd -u 1000 -m agentops --shell /bin/bash
+USER agentops
+```
 
-Configure Gotify notifications for security events:
+#### Capability Dropping
 
-- **Priority 8 (High)**: Security violations, repeated failures
-- **Priority 5 (Normal)**: Confirmation requests, policy violations
-- **Priority 3 (Low)**: Successful operations, routine events
+```yaml
+# Docker Compose security options
+security_opt:
+  - no-new-privileges:true
+cap_drop:
+  - ALL
+cap_add:
+  - CHOWN    # Only for log file management
+  - SETUID   # Only for user switching
+  - SETGID   # Only for group management
+```
+
+#### Read-Only Filesystem
+
+```yaml
+# Mount application as read-only
+volumes:
+  - ./src:/app/src:ro
+  - ./config:/app/config:ro
+  - logs:/var/log/agentops:rw  # Only logs writable
+```
+
+### Secret Management
+
+#### Environment Variables (Development)
+
+```bash
+# .env file (never committed)
+GOTIFY_TOKEN=your_secret_token
+DOCKER_SOCKET=/var/run/docker.sock
+```
+
+#### Docker Secrets (Production)
+
+```yaml
+# docker-compose.yml
+services:
+  burly-mcp:
+    secrets:
+      - gotify_token
+    environment:
+      - GOTIFY_TOKEN_FILE=/run/secrets/gotify_token
+
+secrets:
+  gotify_token:
+    external: true
+```
+
+## Security Validation
+
+### Automated Security Scanning
+
+#### Dependency Scanning
+
+```bash
+# Check for known vulnerabilities
+pip-audit --desc --format=json
+
+# Alternative: Safety
+safety check --json
+```
+
+#### Static Code Analysis
+
+```bash
+# Security-focused linting
+bandit -r src/ -f json -o bandit-report.json
+
+# Additional security rules
+semgrep --config=auto src/
+```
+
+#### Container Scanning
+
+```bash
+# Vulnerability scanning
+trivy image --exit-code 1 --severity HIGH,CRITICAL burly-mcp:latest
+
+# Configuration scanning
+trivy config --exit-code 1 docker/
+```
+
+### Manual Security Testing
+
+#### Path Traversal Testing
+
+```python
+# Test cases for path validation
+test_paths = [
+    "../etc/passwd",           # Parent directory
+    "/etc/passwd",            # Absolute path
+    "blog/../../../etc/passwd", # Complex traversal
+    "blog/./../../etc/passwd",  # Current directory traversal
+]
+```
+
+#### Input Validation Testing
+
+```python
+# Test malicious inputs
+malicious_inputs = [
+    {"file_path": "; rm -rf /"},     # Command injection
+    {"file_path": "$(whoami)"},      # Command substitution
+    {"file_path": "`id`"},           # Backtick execution
+    {"file_path": "file.md\x00"},    # Null byte injection
+]
+```
 
 ## Incident Response
 
-### Detection
+### Security Incident Classification
 
-Monitor for these indicators of compromise:
+#### Critical (P0)
+- Arbitrary code execution
+- Privilege escalation
+- Data breach or exposure
 
-1. **Unusual tool usage patterns**: Unexpected combinations or frequencies
-2. **Failed authentication attempts**: Invalid tokens or malformed requests
-3. **Resource consumption spikes**: Unusual CPU or memory usage
-4. **File system anomalies**: Unexpected file modifications or access patterns
-5. **Network anomalies**: Unusual Gotify notification patterns
+#### High (P1)
+- Denial of service
+- Authentication bypass
+- Configuration tampering
+
+#### Medium (P2)
+- Information disclosure
+- Policy violations
+- Audit log tampering
 
 ### Response Procedures
 
-#### Immediate Response
-1. **Isolate**: Stop the container to prevent further damage
-2. **Preserve**: Backup audit logs and container state
-3. **Assess**: Review audit logs to understand scope of incident
-4. **Notify**: Alert relevant stakeholders
+1. **Detection**: Automated monitoring and manual reporting
+2. **Assessment**: Determine scope and impact
+3. **Containment**: Isolate affected systems
+4. **Eradication**: Remove threat and vulnerabilities
+5. **Recovery**: Restore normal operations
+6. **Lessons Learned**: Update security controls
 
-#### Investigation
-1. **Timeline**: Reconstruct sequence of events from audit logs
-2. **Impact**: Assess what systems or data were affected
-3. **Root Cause**: Identify how the security control was bypassed
-4. **Evidence**: Collect logs and artifacts for analysis
+### Contact Information
 
-#### Recovery
-1. **Remediate**: Fix the underlying vulnerability
-2. **Restore**: Restore systems from clean backups if necessary
-3. **Monitor**: Enhanced monitoring during recovery period
-4. **Document**: Update procedures based on lessons learned
+- **Security Team**: security@example.com
+- **Emergency Contact**: +1-555-SECURITY
+- **PGP Key**: Available at keyserver.ubuntu.com
+
+## Compliance and Governance
+
+### Security Standards
+
+- **OWASP Top 10**: Address common web application risks
+- **CIS Controls**: Implement critical security controls
+- **NIST Framework**: Follow cybersecurity framework guidelines
+
+### Audit Requirements
+
+- **Log Retention**: 90 days minimum for audit logs
+- **Access Reviews**: Quarterly review of permissions
+- **Vulnerability Management**: Monthly security scans
+- **Incident Documentation**: All incidents documented and reviewed
+
+### Privacy Considerations
+
+- **Data Minimization**: Collect only necessary information
+- **Purpose Limitation**: Use data only for intended purposes
+- **Retention Limits**: Delete data when no longer needed
+- **Access Controls**: Restrict access to authorized personnel
 
 ## Security Best Practices
 
 ### Deployment Security
 
-1. **Minimal Attack Surface**:
-   - Only expose necessary ports and services
-   - Use specific container tags, not 'latest'
-   - Regularly update base images and dependencies
-
-2. **Network Security**:
-   - Deploy on isolated networks when possible
-   - Use TLS for all external communications
-   - Implement network segmentation
-
-3. **Access Control**:
-   - Limit who can modify policy files
-   - Use strong authentication for Gotify
-   - Implement least-privilege access
+1. **Use Docker Secrets** for production deployments
+2. **Enable Audit Logging** with proper retention
+3. **Configure Resource Limits** to prevent DoS
+4. **Regular Security Updates** for dependencies
+5. **Network Segmentation** to limit blast radius
 
 ### Operational Security
 
-1. **Regular Updates**:
-   - Keep container images updated
-   - Monitor security advisories for dependencies
-   - Update policy files as needed
-
-2. **Monitoring**:
-   - Review audit logs regularly
-   - Set up automated alerting for anomalies
-   - Monitor resource usage patterns
-
-3. **Backup and Recovery**:
-   - Regular backups of configuration and logs
-   - Test recovery procedures periodically
-   - Document incident response procedures
+1. **Monitor Audit Logs** for suspicious activity
+2. **Regular Vulnerability Scans** of containers and dependencies
+3. **Access Control Reviews** for permissions and policies
+4. **Incident Response Testing** through tabletop exercises
+5. **Security Training** for development and operations teams
 
 ### Development Security
 
-1. **Secure Coding**:
-   - Input validation for all user data
-   - Proper error handling without information disclosure
-   - Regular security code reviews
+1. **Secure Coding Practices** following OWASP guidelines
+2. **Code Review Requirements** for all security-related changes
+3. **Automated Security Testing** in CI/CD pipelines
+4. **Dependency Management** with vulnerability monitoring
+5. **Secret Scanning** to prevent credential leaks
 
-2. **Testing**:
-   - Security-focused unit tests
-   - Penetration testing of security controls
-   - Fuzzing of input validation
+## Security Contacts
 
-3. **Supply Chain**:
-   - Pin dependency versions
-   - Verify container image signatures
-   - Regular vulnerability scanning
+For security-related questions or to report vulnerabilities:
 
-## Compliance Considerations
+- **Email**: security@example.com
+- **Response Time**: 24 hours for initial response
+- **Disclosure Policy**: Coordinated disclosure preferred
+- **Bug Bounty**: Contact us for program details
 
-### Data Protection
-- **Audit Logs**: May contain sensitive information, handle according to data protection requirements
-- **Environment Variables**: Redact sensitive values from logs
-- **File Content**: Blog content may contain personal information
+---
 
-### Retention Policies
-- **Audit Logs**: Retain for compliance requirements (typically 1-7 years)
-- **Container Logs**: Rotate regularly to prevent disk exhaustion
-- **Backup Data**: Secure storage with appropriate access controls
-
-### Access Logging
-- **Administrative Access**: Log all configuration changes
-- **Tool Execution**: Comprehensive audit trail of all operations
-- **Security Events**: Detailed logging of security-relevant events
-
-This security guide provides the foundation for safely operating Burly MCP in production environments. Regular review and updates of these security measures are essential as threats evolve.
+**Last Updated**: 2024-01-01  
+**Next Review**: 2024-04-01  
+**Document Owner**: Security Team

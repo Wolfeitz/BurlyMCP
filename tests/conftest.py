@@ -1,96 +1,140 @@
 """
-Pytest Configuration and Fixtures
+Pytest configuration and shared fixtures for Burly MCP tests.
 
-This module provides common test fixtures and configuration
-for the Burly MCP server test suite.
+This module provides common test fixtures and configuration for both
+unit and integration tests.
 """
 
-import pytest
-import tempfile
 import os
+import tempfile
 from pathlib import Path
-from typing import Generator
+from typing import Dict, Any
+import pytest
 
 
 @pytest.fixture
-def temp_dir() -> Generator[Path, None, None]:
-    """
-    Provide a temporary directory for test files.
-    
-    Yields:
-        Path to a temporary directory that is cleaned up after the test
-    """
-    with tempfile.TemporaryDirectory() as temp_path:
-        yield Path(temp_path)
+def temp_dir():
+    """Create a temporary directory for test files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield Path(tmpdir)
 
 
 @pytest.fixture
-def test_policy_file():
-    """
-    Provide a context manager for creating test policy files in current directory.
-    
-    This avoids path traversal protection issues in PolicyLoader.
-    """
-    created_files = []
-    
-    def create_file(filename: str, content: str) -> Path:
-        policy_file = Path(filename)
-        policy_file.write_text(content)
-        created_files.append(policy_file)
-        return policy_file
-    
-    yield create_file
-    
-    # Cleanup
-    for file_path in created_files:
-        if file_path.exists():
-            file_path.unlink()
+def mock_env_vars():
+    """Provide mock environment variables for testing."""
+    return {
+        "LOG_LEVEL": "DEBUG",
+        "LOG_DIR": "/tmp/test_logs",
+        "POLICY_FILE": "tests/fixtures/test_policy.yaml",
+        "BLOG_STAGE_ROOT": "/tmp/test_blog_stage",
+        "BLOG_PUBLISH_ROOT": "/tmp/test_blog_publish",
+        "DEFAULT_TIMEOUT_SEC": "10",
+        "OUTPUT_TRUNCATE_LIMIT": "1024",
+        "AUDIT_LOG_PATH": "/tmp/test_audit.jsonl",
+        "NOTIFICATIONS_ENABLED": "false",
+        "SERVER_NAME": "test-burly-mcp",
+        "SERVER_VERSION": "0.0.1-test",
+    }
 
 
 @pytest.fixture
-def sample_policy_yaml() -> str:
-    """
-    Provide sample policy YAML content for testing.
-    
-    Returns:
-        YAML content string for policy configuration
-    """
-    return """
-tools:
-  test_tool:
-    description: "Test tool for unit tests"
-    args_schema:
-      type: "object"
-      properties:
-        message:
-          type: "string"
-      required: ["message"]
-    command: ["echo", "{message}"]
-    mutates: false
-    requires_confirm: false
-    timeout_sec: 10
-    notify: ["failure"]
+def mock_config(mock_env_vars, monkeypatch):
+    """Set up mock environment variables for testing."""
+    for key, value in mock_env_vars.items():
+        monkeypatch.setenv(key, value)
+    return mock_env_vars
 
-config:
-  output_truncate_limit: 1024
-  default_timeout_sec: 30
+
+@pytest.fixture
+def sample_blog_post():
+    """Provide sample blog post content for testing."""
+    return """---
+title: "Test Blog Post"
+date: "2024-01-01"
+tags: ["test", "example"]
+author: "Test Author"
+---
+
+# Test Blog Post
+
+This is a test blog post for validation testing.
+
+## Content
+
+Some example content here.
 """
 
 
 @pytest.fixture
-def mock_environment(monkeypatch) -> None:
-    """
-    Set up mock environment variables for testing.
+def invalid_blog_post():
+    """Provide invalid blog post content for testing."""
+    return """---
+title: "Missing Date Post"
+tags: ["test"]
+---
+
+# Invalid Post
+
+This post is missing required fields.
+"""
+
+
+@pytest.fixture
+def sample_mcp_request():
+    """Provide sample MCP request data."""
+    return {
+        "method": "call_tool",
+        "name": "disk_space",
+        "args": {}
+    }
+
+
+@pytest.fixture
+def sample_tool_result():
+    """Provide sample tool result data."""
+    from burly_mcp.tools.registry import ToolResult
     
-    Args:
-        monkeypatch: Pytest monkeypatch fixture
-    """
-    # Mock Gotify configuration
-    monkeypatch.setenv("GOTIFY_ENABLED", "false")
-    monkeypatch.setenv("GOTIFY_URL", "http://localhost:8080")
-    monkeypatch.setenv("GOTIFY_TOKEN", "test_token")
-    
-    # Mock paths
-    monkeypatch.setenv("BLOG_STAGE_ROOT", "/tmp/blog/stage")
-    monkeypatch.setenv("BLOG_PUBLISH_ROOT", "/tmp/blog/public")
-    monkeypatch.setenv("AUDIT_LOG_PATH", "/tmp/audit.jsonl")
+    return ToolResult(
+        success=True,
+        need_confirm=False,
+        summary="Test operation completed",
+        data={"test": "data"},
+        stdout="Test output",
+        stderr="",
+        exit_code=0,
+        elapsed_ms=100
+    )
+
+
+# Test markers
+pytest_plugins = []
+
+def pytest_configure(config):
+    """Configure pytest with custom markers."""
+    config.addinivalue_line(
+        "markers", "unit: mark test as a unit test"
+    )
+    config.addinivalue_line(
+        "markers", "integration: mark test as an integration test"
+    )
+    config.addinivalue_line(
+        "markers", "docker: mark test as requiring Docker"
+    )
+    config.addinivalue_line(
+        "markers", "slow: mark test as slow running"
+    )
+
+
+@pytest.fixture(scope="session")
+def docker_available():
+    """Check if Docker is available for testing."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["docker", "version"], 
+            capture_output=True, 
+            timeout=5
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False

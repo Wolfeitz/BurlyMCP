@@ -145,7 +145,7 @@
   - Add notification status to audit logs
   - _Requirements: 3.1, 3.2_
 
-- [ ]* 6.3 Write notification tests
+- [ ] 6.3 Write notification tests
   - Test Gotify API integration
   - Test notification failure handling
   - Test priority assignment

@@ -1,0 +1,256 @@
+# Burly MCP Tool Policy Configuration
+#
+# ============================================================================
+# SECURITY-FIRST TOOL POLICY CONFIGURATION
+# ============================================================================
+#
+# This file defines the security policies and configurations for all tools
+# available through the MCP server. Each tool must be explicitly defined
+# here with its validation schema and execution parameters.
+#
+# 🔒 SECURITY PRINCIPLES:
+# - WHITELIST ONLY: Only tools defined in this file can be executed
+# - LEAST PRIVILEGE: Each tool has minimal required permissions
+# - VALIDATION: All inputs are validated against JSON schemas
+# - CONFIRMATION: Mutating operations require explicit confirmation
+# - AUDIT: All operations are logged for security monitoring
+# - TIMEOUTS: All operations have maximum execution time limits
+#
+# 📚 EDUCATIONAL NOTES:
+# This configuration demonstrates secure AI agent integration patterns:
+# - How to safely expose system operations to AI assistants
+# - Input validation and sanitization best practices
+# - Confirmation workflows for dangerous operations
+# - Comprehensive audit logging for compliance
+#
+# ⚠️  SECURITY WARNINGS:
+# - Never add tools that execute arbitrary commands
+# - Always validate file paths to prevent directory traversal
+# - Use confirmation for any operation that modifies system state
+# - Regularly review audit logs for suspicious activity
+# - Keep timeout values reasonable to prevent resource exhaustion
+
+# ============================================================================
+# TOOL DEFINITIONS
+# ============================================================================
+#
+# Each tool configuration includes:
+# - description: Human-readable description for AI assistants
+# - args_schema: JSON Schema 2020-12 for strict input validation
+# - command: Command template (empty for custom Python implementations)
+# - mutates: Boolean indicating if tool modifies system state
+# - requires_confirm: Boolean requiring explicit user confirmation
+# - timeout_sec: Maximum execution time to prevent resource exhaustion
+# - notify: Notification types for monitoring (success, failure, need_confirm)
+
+tools:
+  # ========================================================================
+  # SYSTEM MONITORING TOOLS (Read-Only, Low Risk)
+  # ========================================================================
+  
+  docker_ps:
+    description: "List Docker containers with status information - safe read-only operation for system monitoring"
+    # Educational note: No arguments needed, making this a very safe tool
+    args_schema:
+      type: "object"
+      properties: {}
+      additionalProperties: false  # Reject any unexpected arguments
+    command: ["docker", "ps", "--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}"]
+    mutates: false  # Read-only operation
+    requires_confirm: false  # Safe to execute without confirmation
+    timeout_sec: 30  # Reasonable timeout for Docker operations
+    notify: ["failure"]  # Only notify on failures to reduce noise
+
+  disk_space:
+    description: "Check filesystem disk usage - essential for system health monitoring"
+    # Educational note: Simple monitoring tool with no user input required
+    args_schema:
+      type: "object"
+      properties: {}
+      additionalProperties: false
+    command: ["df", "-hT", "--exclude-type=tmpfs", "--exclude-type=devtmpfs"]
+    mutates: false  # Read-only operation
+    requires_confirm: false  # Safe system monitoring
+    timeout_sec: 15  # Quick operation, short timeout
+    notify: ["failure"]  # Alert on monitoring failures
+
+  # ========================================================================
+  # BLOG CONTENT MANAGEMENT TOOLS (Mixed Risk)
+  # ========================================================================
+  
+  blog_stage_markdown:
+    description: "Validate Markdown blog post with YAML front-matter - safe content validation"
+    # Educational note: File path validation prevents directory traversal attacks
+    args_schema:
+      type: "object"
+      properties:
+        file_path:
+          type: "string"
+          pattern: "^[a-zA-Z0-9._/-]+\\.md$"  # Only allow safe characters and .md extension
+          maxLength: 255  # Prevent excessively long paths
+      required: ["file_path"]
+      additionalProperties: false
+    command: []  # Custom Python implementation with path validation
+    mutates: false  # Read-only validation
+    requires_confirm: false  # Safe to validate content
+    timeout_sec: 10  # Quick validation operation
+    notify: ["failure"]  # Alert on validation failures
+
+  blog_publish_static:
+    description: "Publish validated blog content to static site directory - MUTATING OPERATION requiring confirmation"
+    # Educational note: This is a high-risk operation that modifies the file system
+    args_schema:
+      type: "object"
+      properties:
+        source_files:
+          type: "array"
+          items:
+            type: "string"
+            pattern: "^[a-zA-Z0-9._/-]+\\.md$"  # Strict file path validation
+            maxLength: 255
+          minItems: 1
+          maxItems: 50  # Prevent bulk operations that could overwhelm system
+        _confirm:
+          type: "boolean"
+          description: "Must be set to true to confirm this mutating operation"
+      required: ["source_files"]
+      additionalProperties: false
+    command: []  # Custom Python implementation with security checks
+    mutates: true  # ⚠️  MODIFIES FILE SYSTEM
+    requires_confirm: true  # ⚠️  REQUIRES EXPLICIT CONFIRMATION
+    timeout_sec: 60  # Allow time for file operations
+    notify: ["success", "failure", "need_confirm"]  # Full notification coverage
+
+  # ========================================================================
+  # NOTIFICATION TOOLS (Low Risk)
+  # ========================================================================
+  
+  gotify_ping:
+    description: "Send test notification via Gotify - useful for testing notification setup"
+    # Educational note: Message length limits prevent abuse
+    args_schema:
+      type: "object"
+      properties:
+        message:
+          type: "string"
+          maxLength: 200  # Prevent spam with long messages
+          minLength: 1    # Require actual content
+          pattern: "^[\\w\\s.,!?-]+$"  # Only allow safe characters
+      additionalProperties: false
+    command: []  # Custom Python implementation
+    mutates: false  # Notification doesn't change system state
+    requires_confirm: false  # Safe to send test messages
+    timeout_sec: 10  # Network operations should be quick
+    notify: ["success", "failure"]  # Monitor notification delivery
+
+# ============================================================================
+# GLOBAL SECURITY CONFIGURATION
+# ============================================================================
+#
+# These settings apply to all tools and enforce system-wide security policies
+
+config:
+  # Output truncation prevents memory exhaustion and log spam
+  output_truncate_limit: 10240  # 10KB limit - adjust based on your needs
+  
+  # Default timeout prevents runaway processes
+  default_timeout_sec: 30  # Conservative default - override per tool as needed
+  
+  # Audit logging for security compliance and monitoring
+  audit_log_path: "/var/log/agentops/audit.jsonl"  # JSON Lines format for easy parsing
+  
+  # ========================================================================
+  # SECURITY CONSTRAINTS
+  # ========================================================================
+  security:
+    # Blog directory isolation - prevents path traversal attacks
+    blog_stage_root: "/app/blog/stage"    # Read-only staging area
+    blog_publish_root: "/app/blog/publish"  # Write-only publish area
+    
+    # File extension whitelist for blog operations
+    allowed_blog_extensions: [".md", ".markdown"]
+    
+    # Path traversal prevention patterns
+    forbidden_path_patterns:
+      - "../"      # Parent directory traversal
+      - "/.."      # Hidden parent directory
+      - "/etc/"    # System configuration
+      - "/var/"    # System variables (except our log directory)
+      - "/root/"   # Root user directory
+      - "/home/"   # User directories
+    
+    # Command injection prevention
+    forbidden_command_chars: [";", "&", "|", "`", "$", "(", ")", "<", ">"]
+    
+    # Maximum file size for blog operations (in bytes)
+    max_blog_file_size: 1048576  # 1MB limit
+    
+    # Maximum number of files in a single operation
+    max_files_per_operation: 50
+
+# ============================================================================
+# NOTIFICATION CONFIGURATION
+# ============================================================================
+#
+# Configure how and when notifications are sent via Gotify
+
+notifications:
+  # Gotify server configuration (set via environment variables)
+  gotify:
+    enabled: true  # Set to false to disable all notifications
+    
+    # Priority levels for different event types
+    priorities:
+      success: 3      # Low priority for successful operations
+      failure: 8      # High priority for failures
+      need_confirm: 5 # Medium priority for confirmation requests
+    
+    # Rate limiting to prevent notification spam
+    rate_limit:
+      max_per_minute: 10  # Maximum notifications per minute
+      max_per_hour: 100   # Maximum notifications per hour
+
+# ============================================================================
+# COMPLIANCE AND MONITORING
+# ============================================================================
+#
+# Settings for audit compliance and security monitoring
+
+compliance:
+  # Audit log retention
+  audit_retention_days: 90  # Keep audit logs for 90 days
+  
+  # Sensitive data redaction in logs
+  redact_patterns:
+    - "password"
+    - "token"
+    - "secret"
+    - "key"
+    - "auth"
+  
+  # Required audit fields
+  required_audit_fields:
+    - "timestamp"
+    - "tool_name"
+    - "user_context"
+    - "execution_status"
+    - "execution_time_ms"
+    - "args_hash"  # SHA-256 hash of arguments (not plaintext)
+
+# ============================================================================
+# DEVELOPMENT AND TESTING
+# ============================================================================
+#
+# Configuration for development and testing environments
+
+development:
+  # Enable additional logging in development
+  debug_logging: false  # Set to true for verbose logging
+  
+  # Allow additional tools in development (NEVER in production)
+  allow_dev_tools: false  # SECURITY: Always false in production
+  
+  # Test mode settings
+  test_mode:
+    enabled: false  # Enable test mode for automated testing
+    mock_external_calls: false  # Mock external API calls in tests
