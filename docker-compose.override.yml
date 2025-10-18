@@ -1,0 +1,56 @@
+# Docker Compose Override for Development
+# This file is automatically loaded by docker-compose and provides
+# development-friendly overrides for the main configuration
+
+services:
+  burly-mcp:
+    # Override build for development
+    build:
+      target: dependencies  # Use dependencies stage for faster rebuilds
+    
+    # Development environment variables
+    environment:
+      - LOG_LEVEL=DEBUG
+      - AUDIT_ENABLED=false
+      - PYTHONDONTWRITEBYTECODE=0  # Allow .pyc files for faster imports
+    
+    # Development volume mounts (source code editing)
+    volumes:
+      # Override config to be writable for development
+      - ./config:/app/config:rw
+      
+      # Mount source code for live editing
+      - ./src:/app/src:rw
+      
+      # Mount tests for development
+      - ./tests:/app/tests:ro
+      
+      # Keep other volumes from main config
+      - burly-mcp-logs:/var/log/agentops:rw
+      - burly-mcp-blog-stage:/app/data/blog/stage:rw
+      - burly-mcp-blog-publish:/app/data/blog/publish:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    
+    # Remove read-only constraint for development
+    read_only: false
+    
+    # Remove secrets requirement for development
+    secrets: []
+    
+    # More relaxed security for development
+    security_opt:
+      - no-new-privileges:false
+    
+    # Allow more capabilities for development debugging
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - SYS_PTRACE  # For debugging
+    
+    # Faster health check for development
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
