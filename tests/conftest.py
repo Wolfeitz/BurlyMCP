@@ -82,18 +82,14 @@ This post is missing required fields.
 @pytest.fixture
 def sample_mcp_request():
     """Provide sample MCP request data."""
-    return {
-        "method": "call_tool",
-        "name": "disk_space",
-        "args": {}
-    }
+    return {"method": "call_tool", "name": "disk_space", "args": {}}
 
 
 @pytest.fixture
 def sample_tool_result():
     """Provide sample tool result data."""
     from burly_mcp.tools.registry import ToolResult
-    
+
     return ToolResult(
         success=True,
         need_confirm=False,
@@ -102,39 +98,29 @@ def sample_tool_result():
         stdout="Test output",
         stderr="",
         exit_code=0,
-        elapsed_ms=100
+        elapsed_ms=100,
     )
 
 
 # Test markers
 pytest_plugins = []
 
+
 def pytest_configure(config):
     """Configure pytest with custom markers."""
-    config.addinivalue_line(
-        "markers", "unit: mark test as a unit test"
-    )
-    config.addinivalue_line(
-        "markers", "integration: mark test as an integration test"
-    )
-    config.addinivalue_line(
-        "markers", "docker: mark test as requiring Docker"
-    )
-    config.addinivalue_line(
-        "markers", "slow: mark test as slow running"
-    )
+    config.addinivalue_line("markers", "unit: mark test as a unit test")
+    config.addinivalue_line("markers", "integration: mark test as an integration test")
+    config.addinivalue_line("markers", "docker: mark test as requiring Docker")
+    config.addinivalue_line("markers", "slow: mark test as slow running")
 
 
 @pytest.fixture(scope="session")
 def docker_available():
     """Check if Docker is available for testing."""
     import subprocess
+
     try:
-        result = subprocess.run(
-            ["docker", "version"], 
-            capture_output=True, 
-            timeout=5
-        )
+        result = subprocess.run(["docker", "version"], capture_output=True, timeout=5)
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return False
@@ -218,12 +204,13 @@ def test_policy_file():
     """Create temporary policy files for testing."""
     import tempfile
     import os
-    
+
     def _create_policy_file(filename: str, content: str):
         # Create file in current directory to avoid path traversal issues
         policy_file = Path(filename)
         policy_file.write_text(content)
         return policy_file
+
     return _create_policy_file
 
 
@@ -231,26 +218,32 @@ def test_policy_file():
 def mock_audit_and_notifications(monkeypatch):
     """Automatically mock audit logging and notifications for all tests."""
     from unittest.mock import Mock
-    
+
     # Create mocks
     mock_audit = Mock()
     mock_notify_success = Mock()
     mock_notify_failure = Mock()
     mock_notify_confirmation = Mock()
-    
+
     # Mock audit logging - patch where it's imported
     monkeypatch.setattr("burly_mcp.tools.registry.log_tool_execution", mock_audit)
     monkeypatch.setattr("burly_mcp.audit.get_audit_logger", Mock())
-    
+
     # Mock notifications - patch where they're imported
-    monkeypatch.setattr("burly_mcp.tools.registry.notify_tool_success", mock_notify_success)
-    monkeypatch.setattr("burly_mcp.tools.registry.notify_tool_failure", mock_notify_failure)
-    monkeypatch.setattr("burly_mcp.tools.registry.notify_tool_confirmation", mock_notify_confirmation)
-    
+    monkeypatch.setattr(
+        "burly_mcp.tools.registry.notify_tool_success", mock_notify_success
+    )
+    monkeypatch.setattr(
+        "burly_mcp.tools.registry.notify_tool_failure", mock_notify_failure
+    )
+    monkeypatch.setattr(
+        "burly_mcp.tools.registry.notify_tool_confirmation", mock_notify_confirmation
+    )
+
     # Set test-friendly environment variables
     monkeypatch.setenv("AUDIT_LOG_DIR", "/tmp/test_logs")
     monkeypatch.setenv("NOTIFICATIONS_ENABLED", "false")
-    
+
     # Return mocks for tests that need to access them
     return {
         "audit": mock_audit,

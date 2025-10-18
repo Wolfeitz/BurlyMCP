@@ -9,6 +9,6 @@ from .engine import PolicyLoader, SchemaValidator, ToolRegistry as PolicyToolReg
 
 __all__ = [
     "PolicyLoader",
-    "SchemaValidator", 
+    "SchemaValidator",
     "PolicyToolRegistry",
 ]

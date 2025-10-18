@@ -15,7 +15,7 @@ from .manager import (
 
 __all__ = [
     "get_notification_manager",
-    "notify_tool_confirmation", 
+    "notify_tool_confirmation",
     "notify_tool_failure",
     "notify_tool_success",
     "NotificationManager",

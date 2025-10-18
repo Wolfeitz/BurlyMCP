@@ -196,7 +196,7 @@ def initialize_audit_system(
     """
     try:
         # Get the global audit logger (creates if needed)
-        audit_logger = get_audit_logger(config['audit_log_path'])
+        audit_logger = get_audit_logger(config["audit_log_path"])
 
         logger.info(f"Audit logging initialized: {config['audit_log_path']}")
         return audit_logger

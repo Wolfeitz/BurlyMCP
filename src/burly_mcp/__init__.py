@@ -18,12 +18,12 @@ from .notifications import NotificationManager
 # Define public API exports
 __all__ = [
     "main",
-    "ToolRegistry", 
+    "ToolRegistry",
     "PolicyLoader",
     "SchemaValidator",
     "PolicyToolRegistry",
     "NotificationManager",
     "__version__",
     "__author__",
-    "__description__"
+    "__description__",
 ]
