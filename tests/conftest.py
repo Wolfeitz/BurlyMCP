@@ -147,35 +147,23 @@ def sample_policy_yaml():
 tools:
   test_tool:
     description: "Test tool for unit tests"
-    mutates: false
-    requires_confirm: false
-    timeout_sec: 10
-    notify_on: ["success", "failure"]
-    schema:
+    args_schema:
       type: "object"
       properties:
         test_param:
           type: "string"
           description: "Test parameter"
-      required: []
+      required: ["test_param"]
       additionalProperties: false
-
-  confirm_tool:
-    description: "Tool requiring confirmation"
-    mutates: true
-    requires_confirm: true
-    timeout_sec: 15
-    notify_on: ["success", "failure", "confirmation"]
-    schema:
-      type: "object"
-      properties: {}
-      required: []
-      additionalProperties: false
+    command: []
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 10
+    notify: ["success", "failure"]
 
 config:
   output_truncate_limit: 1024
   default_timeout_sec: 30
-  max_timeout_sec: 300
   security:
     enable_path_validation: true
     allowed_paths: ["/tmp", "/var/tmp"]
@@ -183,10 +171,57 @@ config:
 
 
 @pytest.fixture
-def test_policy_file(temp_dir):
+def multi_tool_policy_yaml():
+    """Provide sample policy YAML content with multiple tools for testing."""
+    return """
+tools:
+  test_tool:
+    description: "Test tool for unit tests"
+    args_schema:
+      type: "object"
+      properties:
+        test_param:
+          type: "string"
+          description: "Test parameter"
+      required: []
+      additionalProperties: false
+    command: []
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 10
+    notify: ["success", "failure"]
+
+  confirm_tool:
+    description: "Tool requiring confirmation"
+    args_schema:
+      type: "object"
+      properties: {}
+      required: []
+      additionalProperties: false
+    command: []
+    mutates: true
+    requires_confirm: true
+    timeout_sec: 15
+    notify: ["success", "failure", "need_confirm"]
+
+config:
+  output_truncate_limit: 1024
+  default_timeout_sec: 30
+  security:
+    enable_path_validation: true
+    allowed_paths: ["/tmp", "/var/tmp"]
+"""
+
+
+@pytest.fixture
+def test_policy_file():
     """Create temporary policy files for testing."""
+    import tempfile
+    import os
+    
     def _create_policy_file(filename: str, content: str):
-        policy_file = temp_dir / filename
+        # Create file in current directory to avoid path traversal issues
+        policy_file = Path(filename)
         policy_file.write_text(content)
         return policy_file
     return _create_policy_file

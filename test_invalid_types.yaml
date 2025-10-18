@@ -1,0 +1,9 @@
+
+tools:
+  invalid_tool:
+    description: 123  # Should be string
+    args_schema: "not_an_object"  # Should be object
+    command: "not_a_list"  # Should be list
+    mutates: "not_a_boolean"  # Should be boolean
+    requires_confirm: "not_a_boolean"  # Should be boolean
+    timeout_sec: "not_an_integer"  # Should be integer

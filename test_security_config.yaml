@@ -1,0 +1,17 @@
+
+tools:
+  test_tool:
+    description: "Test tool"
+    args_schema:
+      type: "object"
+    command: ["echo", "test"]
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 30
+
+config:
+  output_truncate_limit: 2048
+  security:
+    blog_stage_root: "/custom/stage"
+    blog_publish_root: "/custom/publish"
+    allowed_blog_extensions: [".md", ".txt"]

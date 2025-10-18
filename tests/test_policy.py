@@ -558,7 +558,7 @@ class TestToolRegistry:
         registry.initialize()
         
         # Valid args
-        registry.validate_tool_args("test_tool", {"message": "hello"})
+        registry.validate_tool_args("test_tool", {"test_param": "hello"})
         
         # Invalid args - missing required field
         with pytest.raises(SchemaValidationError):

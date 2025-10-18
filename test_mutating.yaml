@@ -1,0 +1,19 @@
+
+tools:
+  safe_tool:
+    description: "Safe read-only tool"
+    args_schema:
+      type: "object"
+    command: ["echo", "safe"]
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 10
+  
+  dangerous_tool:
+    description: "Dangerous mutating tool"
+    args_schema:
+      type: "object"
+    command: ["rm", "-rf"]
+    mutates: true
+    requires_confirm: true
+    timeout_sec: 30
