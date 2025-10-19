@@ -9,7 +9,7 @@ from pathlib import Path
 
 try:
     from testcontainers.compose import DockerCompose
-    from testcontainers import GenericContainer
+    from testcontainers.core.generic import DockerContainer as GenericContainer
     import docker
 
     TESTCONTAINERS_AVAILABLE = True
@@ -39,7 +39,7 @@ class TestDockerIntegration:
     def test_container(self, docker_client):
         """Create a test container for integration tests."""
         container = GenericContainer("alpine:latest")
-        container.with_command("sleep 300")  # Keep container running
+        container.with_command("sleep 30")  # Keep container running for 30 seconds
 
         with container:
             yield container
@@ -280,7 +280,7 @@ version: '3.8'
 services:
   test-app:
     image: alpine:latest
-    command: sleep 300
+    command: sleep 30
     environment:
       - TEST_ENV=integration_test
     volumes:
@@ -290,7 +290,7 @@ services:
 
   test-db:
     image: alpine:latest
-    command: sleep 300
+    command: sleep 30
     networks:
       - test-network
 
