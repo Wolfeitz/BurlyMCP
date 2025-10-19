@@ -69,7 +69,7 @@ class PolicyLoader:
     - Providing access to global configuration settings
     """
 
-    def __init__(self, policy_file_path: str = "policy/tools.yaml"):
+    def __init__(self, policy_file_path: str = "config/policy/tools.yaml"):
         """
         Initialize PolicyLoader with path to policy file.
 

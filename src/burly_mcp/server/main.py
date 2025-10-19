@@ -113,7 +113,7 @@ def load_configuration() -> Dict[str, Any]:
     """
     config = {
         # Policy configuration
-        "policy_file": os.environ.get("POLICY_FILE", "policy/tools.yaml"),
+        "policy_file": os.environ.get("POLICY_FILE", "config/policy/tools.yaml"),
         # Security configuration
         "blog_stage_root": os.environ.get("BLOG_STAGE_ROOT", "/app/data/blog/stage"),
         "blog_publish_root": os.environ.get(

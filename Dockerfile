@@ -84,6 +84,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src \
     BURLY_CONFIG_DIR=/app/config \
     BURLY_LOG_DIR=/var/log/agentops \
+    POLICY_FILE=/app/config/policy/tools.yaml \
     DOCKER_SOCKET=/var/run/docker.sock \
     DOCKER_TIMEOUT=30 \
     MAX_OUTPUT_SIZE=1048576 \
