@@ -121,11 +121,11 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.unit)
         elif "integration" in str(item.fspath):
             item.add_marker(pytest.mark.integration)
-        
+
         # Mark Docker-related tests
         if "docker" in str(item.fspath) or "docker" in item.name.lower():
             item.add_marker(pytest.mark.docker)
-        
+
         # Mark slow tests (integration tests are typically slower)
         if "integration" in str(item.fspath):
             item.add_marker(pytest.mark.slow)
@@ -258,7 +258,8 @@ def mock_audit_and_notifications(monkeypatch):
             "burly_mcp.tools.registry.notify_tool_failure", mock_notify_failure
         )
         monkeypatch.setattr(
-            "burly_mcp.tools.registry.notify_tool_confirmation", mock_notify_confirmation
+            "burly_mcp.tools.registry.notify_tool_confirmation",
+            mock_notify_confirmation,
         )
     except (ImportError, AttributeError):
         pass  # Module not available, skip mocking
@@ -281,7 +282,7 @@ def mock_audit_and_notifications(monkeypatch):
 def mock_config_class():
     """Mock the Config class for testing."""
     from unittest.mock import Mock
-    
+
     config = Mock()
     config.config_dir = Path("/tmp/test_config")
     config.policy_file = Path("/tmp/test_config/policy/tools.yaml")
@@ -295,7 +296,7 @@ def mock_config_class():
     config.blog_stage_root = Path("/tmp/test_blog_stage")
     config.blog_publish_root = Path("/tmp/test_blog_publish")
     config.validate.return_value = []
-    
+
     return config
 
 
@@ -303,31 +304,31 @@ def mock_config_class():
 def mock_docker_client():
     """Mock Docker client for testing."""
     from unittest.mock import Mock
-    
+
     client = Mock()
     client.ping.return_value = True
     client.version.return_value = {"Version": "20.10.0"}
-    
+
     # Mock container operations
     container = Mock()
     container.id = "test_container_id"
     container.status = "running"
     container.logs.return_value = b"test output"
     container.wait.return_value = {"StatusCode": 0}
-    
+
     client.containers.run.return_value = container
     client.containers.get.return_value = container
     client.containers.list.return_value = [container]
-    
+
     # Mock image operations
     image = Mock()
     image.id = "test_image_id"
     image.tags = ["test:latest"]
-    
+
     client.images.get.return_value = image
     client.images.list.return_value = [image]
     client.images.build.return_value = (image, [])
-    
+
     return client
 
 
@@ -335,11 +336,11 @@ def mock_docker_client():
 def mock_mcp_server():
     """Mock MCP server for testing."""
     from unittest.mock import Mock
-    
+
     server = Mock()
     server.list_tools.return_value = []
     server.call_tool.return_value = {"success": True, "result": "test"}
-    
+
     return server
 
 
@@ -349,16 +350,16 @@ def test_files_dir(tmp_path):
     """Create a temporary directory with test files."""
     test_dir = tmp_path / "test_files"
     test_dir.mkdir()
-    
+
     # Create sample files
     (test_dir / "sample.txt").write_text("Sample content")
     (test_dir / "config.yaml").write_text("key: value")
-    
+
     # Create subdirectory
     sub_dir = test_dir / "subdir"
     sub_dir.mkdir()
     (sub_dir / "nested.txt").write_text("Nested content")
-    
+
     return test_dir
 
 
@@ -367,13 +368,14 @@ def policy_config_dir(tmp_path):
     """Create a temporary policy configuration directory."""
     config_dir = tmp_path / "config"
     config_dir.mkdir()
-    
+
     policy_dir = config_dir / "policy"
     policy_dir.mkdir()
-    
+
     # Create a basic policy file
     policy_file = policy_dir / "tools.yaml"
-    policy_file.write_text("""
+    policy_file.write_text(
+        """
 tools:
   test_tool:
     description: "Test tool"
@@ -391,8 +393,9 @@ tools:
 config:
   output_truncate_limit: 1024
   default_timeout_sec: 30
-""")
-    
+"""
+    )
+
     return config_dir
 
 
@@ -401,13 +404,13 @@ config:
 def docker_error():
     """Simulate Docker errors for testing."""
     from unittest.mock import Mock
-    
+
     def create_error(error_type="APIError", message="Test error"):
         error = Mock()
         error.__class__.__name__ = error_type
         error.explanation = message
         return error
-    
+
     return create_error
 
 
@@ -415,11 +418,11 @@ def docker_error():
 def network_error():
     """Simulate network errors for testing."""
     import requests
-    
+
     def create_error(status_code=500, message="Network error"):
         error = requests.exceptions.RequestException(message)
         error.response = Mock()
         error.response.status_code = status_code
         return error
-    
+
     return create_error

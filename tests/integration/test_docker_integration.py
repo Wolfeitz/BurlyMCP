@@ -31,15 +31,15 @@ class TestDockerIntegration:
         """Create a test container for integration tests."""
         container = GenericContainer("alpine:latest")
         container.with_command("sleep 300")  # Keep container running
-        
+
         with container:
             yield container
 
     def test_docker_client_connection(self, docker_client):
         """Test Docker client connection."""
         version = docker_client.version()
-        assert 'Version' in version
-        assert version['Version'] is not None
+        assert "Version" in version
+        assert version["Version"] is not None
 
     def test_container_lifecycle(self, docker_client):
         """Test container creation, start, stop, and removal."""
@@ -48,15 +48,15 @@ class TestDockerIntegration:
             "alpine:latest",
             command="echo 'Hello from container'",
             detach=True,
-            remove=True
+            remove=True,
         )
-        
+
         # Wait for container to complete
         result = container.wait()
-        assert result['StatusCode'] == 0
-        
+        assert result["StatusCode"] == 0
+
         # Get logs
-        logs = container.logs().decode('utf-8')
+        logs = container.logs().decode("utf-8")
         assert "Hello from container" in logs
 
     def test_container_with_volume_mount(self, docker_client, tmp_path):
@@ -64,21 +64,21 @@ class TestDockerIntegration:
         # Create test file
         test_file = tmp_path / "test.txt"
         test_file.write_text("Test content from host")
-        
+
         # Run container with volume mount
         container = docker_client.containers.run(
             "alpine:latest",
             command="cat /mounted/test.txt",
-            volumes={str(tmp_path): {'bind': '/mounted', 'mode': 'ro'}},
+            volumes={str(tmp_path): {"bind": "/mounted", "mode": "ro"}},
             detach=True,
-            remove=True
+            remove=True,
         )
-        
+
         # Wait and get result
         result = container.wait()
-        assert result['StatusCode'] == 0
-        
-        logs = container.logs().decode('utf-8')
+        assert result["StatusCode"] == 0
+
+        logs = container.logs().decode("utf-8")
         assert "Test content from host" in logs
 
     def test_container_environment_variables(self, docker_client):
@@ -88,20 +88,20 @@ class TestDockerIntegration:
             command="sh -c 'echo $TEST_VAR'",
             environment={"TEST_VAR": "test_value"},
             detach=True,
-            remove=True
+            remove=True,
         )
-        
+
         result = container.wait()
-        assert result['StatusCode'] == 0
-        
-        logs = container.logs().decode('utf-8')
+        assert result["StatusCode"] == 0
+
+        logs = container.logs().decode("utf-8")
         assert "test_value" in logs
 
     def test_container_network_isolation(self, docker_client):
         """Test container network isolation."""
         # Create custom network
         network = docker_client.networks.create("test_network")
-        
+
         try:
             # Run container in custom network
             container = docker_client.containers.run(
@@ -109,16 +109,16 @@ class TestDockerIntegration:
                 command="ip route show",
                 network="test_network",
                 detach=True,
-                remove=True
+                remove=True,
             )
-            
+
             result = container.wait()
-            assert result['StatusCode'] == 0
-            
+            assert result["StatusCode"] == 0
+
             # Container should have network configuration
-            logs = container.logs().decode('utf-8')
+            logs = container.logs().decode("utf-8")
             assert len(logs.strip()) > 0
-            
+
         finally:
             network.remove()
 
@@ -131,11 +131,11 @@ class TestDockerIntegration:
             cpu_period=100000,
             cpu_quota=50000,  # 50% CPU
             detach=True,
-            remove=True
+            remove=True,
         )
-        
+
         result = container.wait()
-        assert result['StatusCode'] == 0
+        assert result["StatusCode"] == 0
 
     def test_container_security_options(self, docker_client):
         """Test container with security options."""
@@ -147,13 +147,13 @@ class TestDockerIntegration:
             cap_add=["CHOWN"],
             security_opt=["no-new-privileges:true"],
             detach=True,
-            remove=True
+            remove=True,
         )
-        
+
         result = container.wait()
-        assert result['StatusCode'] == 0
-        
-        logs = container.logs().decode('utf-8')
+        assert result["StatusCode"] == 0
+
+        logs = container.logs().decode("utf-8")
         # Should show non-root user
         assert "uid=1000" in logs
 
@@ -162,11 +162,9 @@ class TestDockerIntegration:
         """Test container timeout handling."""
         # Start long-running container
         container = docker_client.containers.run(
-            "alpine:latest",
-            command="sleep 10",
-            detach=True
+            "alpine:latest", command="sleep 10", detach=True
         )
-        
+
         try:
             # Wait with timeout
             result = container.wait(timeout=2)
@@ -184,12 +182,14 @@ class TestDockerIntegration:
         # Pull image
         image = docker_client.images.pull("alpine:latest")
         assert image is not None
-        
+
         # List images
         images = docker_client.images.list()
-        alpine_images = [img for img in images if any("alpine" in tag for tag in img.tags)]
+        alpine_images = [
+            img for img in images if any("alpine" in tag for tag in img.tags)
+        ]
         assert len(alpine_images) > 0
-        
+
         # Get image details
         image_details = docker_client.images.get("alpine:latest")
         assert image_details.id is not None
@@ -200,18 +200,18 @@ class TestDockerIntegration:
             "alpine:latest",
             command="sh -c 'for i in $(seq 1 5); do echo Line $i; sleep 0.1; done'",
             detach=True,
-            remove=True
+            remove=True,
         )
-        
+
         # Stream logs
         log_lines = []
         for log_line in container.logs(stream=True):
-            log_lines.append(log_line.decode('utf-8').strip())
+            log_lines.append(log_line.decode("utf-8").strip())
             if len(log_lines) >= 5:
                 break
-        
+
         container.wait()
-        
+
         assert len(log_lines) == 5
         assert "Line 1" in log_lines[0]
         assert "Line 5" in log_lines[4]
@@ -220,9 +220,9 @@ class TestDockerIntegration:
         """Test executing commands in running container."""
         # Execute command in container
         exec_result = test_container.exec_run("echo 'Executed command'")
-        
+
         assert exec_result.exit_code == 0
-        assert "Executed command" in exec_result.output.decode('utf-8')
+        assert "Executed command" in exec_result.output.decode("utf-8")
 
     def test_container_file_operations(self, test_container, tmp_path):
         """Test file operations with container."""
@@ -230,29 +230,29 @@ class TestDockerIntegration:
         test_content = "Test file content"
         test_file = tmp_path / "container_test.txt"
         test_file.write_text(test_content)
-        
+
         # Copy file to container
-        with open(test_file, 'rb') as f:
+        with open(test_file, "rb") as f:
             test_container.put_archive("/tmp", f.read())
-        
+
         # Verify file in container
         exec_result = test_container.exec_run("cat /tmp/container_test.txt")
         assert exec_result.exit_code == 0
-        assert test_content in exec_result.output.decode('utf-8')
+        assert test_content in exec_result.output.decode("utf-8")
 
     def test_container_stats_monitoring(self, test_container):
         """Test container statistics monitoring."""
         # Get container stats
         stats = test_container.stats(stream=False)
-        
-        assert 'memory' in stats
-        assert 'cpu_stats' in stats
-        assert 'networks' in stats
-        
+
+        assert "memory" in stats
+        assert "cpu_stats" in stats
+        assert "networks" in stats
+
         # Memory stats should have usage information
-        memory_stats = stats['memory']
-        assert 'usage' in memory_stats
-        assert memory_stats['usage'] > 0
+        memory_stats = stats["memory"]
+        assert "usage" in memory_stats
+        assert memory_stats["usage"] > 0
 
 
 @pytest.mark.integration
@@ -264,7 +264,7 @@ class TestDockerComposeIntegration:
     def docker_compose_setup(self, tmp_path_factory):
         """Set up Docker Compose environment for testing."""
         compose_dir = tmp_path_factory.mktemp("compose")
-        
+
         # Create docker-compose.yml for testing
         compose_content = """
 version: '3.8'
@@ -289,15 +289,15 @@ networks:
   test-network:
     driver: bridge
 """
-        
+
         compose_file = compose_dir / "docker-compose.yml"
         compose_file.write_text(compose_content)
-        
+
         # Create test data directory
         test_data_dir = compose_dir / "test-data"
         test_data_dir.mkdir()
         (test_data_dir / "test.txt").write_text("Test data")
-        
+
         return compose_dir
 
     @pytest.mark.slow
@@ -305,8 +305,10 @@ networks:
         """Test Docker Compose service lifecycle."""
         with DockerCompose(str(docker_compose_setup)) as compose:
             # Services should be running
-            assert compose.get_service_port("test-app", 80) is not None or True  # Alpine doesn't expose ports
-            
+            assert (
+                compose.get_service_port("test-app", 80) is not None or True
+            )  # Alpine doesn't expose ports
+
             # Execute command in service
             result = compose.exec_in_container("test-app", "echo 'Compose test'")
             # Note: testcontainers API may vary, adjust as needed
@@ -338,10 +340,10 @@ class TestBurlyMCPDockerIntegration:
         """Create Burly MCP configuration for testing."""
         config_dir = tmp_path / "config"
         config_dir.mkdir()
-        
+
         policy_dir = config_dir / "policy"
         policy_dir.mkdir()
-        
+
         # Create test policy
         policy_content = """
 tools:
@@ -362,10 +364,10 @@ config:
   output_truncate_limit: 1024
   default_timeout_sec: 30
 """
-        
+
         policy_file = policy_dir / "tools.yaml"
         policy_file.write_text(policy_content)
-        
+
         return config_dir
 
     def test_docker_tool_execution(self, docker_client, burly_mcp_config):
@@ -402,41 +404,36 @@ class TestDockerPerformanceIntegration:
     def test_container_startup_performance(self, docker_client):
         """Test container startup performance."""
         start_time = time.time()
-        
+
         container = docker_client.containers.run(
-            "alpine:latest",
-            command="echo 'Performance test'",
-            detach=True,
-            remove=True
+            "alpine:latest", command="echo 'Performance test'", detach=True, remove=True
         )
-        
+
         result = container.wait()
         end_time = time.time()
-        
+
         startup_time = end_time - start_time
-        
-        assert result['StatusCode'] == 0
+
+        assert result["StatusCode"] == 0
         assert startup_time < 10.0  # Should start within 10 seconds
 
     def test_multiple_container_handling(self, docker_client):
         """Test handling multiple containers simultaneously."""
         containers = []
-        
+
         try:
             # Start multiple containers
             for i in range(5):
                 container = docker_client.containers.run(
-                    "alpine:latest",
-                    command=f"sleep {i + 1}",
-                    detach=True
+                    "alpine:latest", command=f"sleep {i + 1}", detach=True
                 )
                 containers.append(container)
-            
+
             # Wait for all containers
             for container in containers:
                 result = container.wait(timeout=10)
-                assert result['StatusCode'] == 0
-                
+                assert result["StatusCode"] == 0
+
         finally:
             # Cleanup
             for container in containers:
@@ -450,9 +447,9 @@ class TestDockerPerformanceIntegration:
         container = docker_client.containers.run(
             "alpine:latest",
             command="sh -c 'for i in $(seq 1 100); do echo $i; sleep 0.01; done'",
-            detach=True
+            detach=True,
         )
-        
+
         try:
             # Monitor container stats
             stats_samples = []
@@ -460,13 +457,13 @@ class TestDockerPerformanceIntegration:
                 stats = container.stats(stream=False)
                 stats_samples.append(stats)
                 time.sleep(0.1)
-            
+
             # Verify we got stats
             assert len(stats_samples) == 5
             for stats in stats_samples:
-                assert 'memory' in stats
-                assert 'cpu_stats' in stats
-                
+                assert "memory" in stats
+                assert "cpu_stats" in stats
+
         finally:
             container.stop()
             container.remove()

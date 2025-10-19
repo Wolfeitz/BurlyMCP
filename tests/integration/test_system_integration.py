@@ -23,7 +23,7 @@ class TestSystemIntegration:
     def system_test_environment(self, tmp_path_factory):
         """Set up complete system test environment."""
         test_dir = tmp_path_factory.mktemp("system_test")
-        
+
         # Create directory structure
         config_dir = test_dir / "config"
         config_dir.mkdir()
@@ -37,7 +37,7 @@ class TestSystemIntegration:
         blog_stage.mkdir()
         blog_publish = blog_dir / "publish"
         blog_publish.mkdir()
-        
+
         # Create comprehensive policy configuration
         policy_content = """
 tools:
@@ -108,10 +108,10 @@ config:
     max_memory_mb: 512
     max_cpu_percent: 75
 """
-        
+
         policy_file = policy_dir / "tools.yaml"
         policy_file.write_text(policy_content)
-        
+
         # Create test blog posts
         test_post_content = """---
 title: "Test Blog Post"
@@ -128,75 +128,82 @@ This is a test blog post for integration testing.
 
 Some example content for testing blog operations.
 """
-        
+
         (blog_stage / "test-post.md").write_text(test_post_content)
-        
+
         return {
-            'test_dir': test_dir,
-            'config_dir': config_dir,
-            'logs_dir': logs_dir,
-            'blog_dir': blog_dir,
-            'policy_file': policy_file
+            "test_dir": test_dir,
+            "config_dir": config_dir,
+            "logs_dir": logs_dir,
+            "blog_dir": blog_dir,
+            "policy_file": policy_file,
         }
 
     @pytest.fixture
     def system_environment_vars(self, system_test_environment):
         """Set up environment variables for system testing."""
         return {
-            'BURLY_CONFIG_DIR': str(system_test_environment['config_dir']),
-            'BURLY_LOG_DIR': str(system_test_environment['logs_dir']),
-            'BLOG_STAGE_ROOT': str(system_test_environment['blog_dir'] / 'stage'),
-            'BLOG_PUBLISH_ROOT': str(system_test_environment['blog_dir'] / 'publish'),
-            'NOTIFICATIONS_ENABLED': 'false',
-            'AUDIT_ENABLED': 'true',
-            'MAX_OUTPUT_SIZE': '2048',
-            'DEFAULT_TIMEOUT_SEC': '30',
+            "BURLY_CONFIG_DIR": str(system_test_environment["config_dir"]),
+            "BURLY_LOG_DIR": str(system_test_environment["logs_dir"]),
+            "BLOG_STAGE_ROOT": str(system_test_environment["blog_dir"] / "stage"),
+            "BLOG_PUBLISH_ROOT": str(system_test_environment["blog_dir"] / "publish"),
+            "NOTIFICATIONS_ENABLED": "false",
+            "AUDIT_ENABLED": "true",
+            "MAX_OUTPUT_SIZE": "2048",
+            "DEFAULT_TIMEOUT_SEC": "30",
         }
 
-    def test_system_startup_and_shutdown(self, system_test_environment, system_environment_vars):
+    def test_system_startup_and_shutdown(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test complete system startup and shutdown."""
         try:
             # Start the system
             process = subprocess.Popen(
-                ['python', '-m', 'burly_mcp.server.main'],
+                ["python", "-m", "burly_mcp.server.main"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env={**os.environ, **system_environment_vars},
-                text=True
+                text=True,
             )
-            
+
             # Give system time to start
             time.sleep(2)
-            
+
             if process.poll() is not None:
                 stdout, stderr = process.communicate()
                 pytest.skip(f"System failed to start: {stderr}")
-            
+
             # Test basic functionality
             request = {"method": "list_tools"}
-            process.stdin.write(json.dumps(request) + '\n')
+            process.stdin.write(json.dumps(request) + "\n")
             process.stdin.flush()
-            
+
             response_line = process.stdout.readline()
             response = json.loads(response_line)
-            
-            assert response['ok'] is True
-            assert len(response['tools']) > 0
-            
+
+            assert response["ok"] is True
+            assert len(response["tools"]) > 0
+
             # Graceful shutdown
             process.terminate()
             process.wait(timeout=10)
-            
+
         except FileNotFoundError:
             pytest.skip("Burly MCP server not available for system testing")
 
-    def test_configuration_validation_and_loading(self, system_test_environment, system_environment_vars):
+    def test_configuration_validation_and_loading(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test configuration validation and loading."""
         # Test with valid configuration
         try:
             process = subprocess.Popen(
-                ['python', '-c', '''
+                [
+                    "python",
+                    "-c",
+                    """
 import sys
 sys.path.insert(0, "src")
 from burly_mcp.config import Config
@@ -205,135 +212,150 @@ errors = config.validate()
 print(f"Validation errors: {len(errors)}")
 for error in errors:
     print(f"Error: {error}")
-'''],
+""",
+                ],
                 env={**os.environ, **system_environment_vars},
                 capture_output=True,
-                text=True
+                text=True,
             )
-            
+
             stdout, stderr = process.communicate()
-            
+
             # Should have minimal validation errors with proper setup
             assert "Validation errors: 0" in stdout or "Validation errors: 1" in stdout
-            
+
         except FileNotFoundError:
             pytest.skip("Python module not available")
 
-    def test_policy_engine_integration(self, system_test_environment, system_environment_vars):
+    def test_policy_engine_integration(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test policy engine integration with the system."""
         try:
             process = subprocess.Popen(
-                ['python', '-c', '''
+                [
+                    "python",
+                    "-c",
+                    '''
 import sys
 sys.path.insert(0, "src")
 from burly_mcp.policy.engine import PolicyEngine
 engine = PolicyEngine()
-engine.load_policy("''' + str(system_test_environment['policy_file']) + '''")
+engine.load_policy("'''
+                    + str(system_test_environment["policy_file"])
+                    + """")
 print(f"Tools loaded: {len(engine.policy_data.get('tools', {}))}")
 print(f"Has system_info: {'system_info' in engine.policy_data.get('tools', {})}")
-'''],
+""",
+                ],
                 env={**os.environ, **system_environment_vars},
                 capture_output=True,
-                text=True
+                text=True,
             )
-            
+
             stdout, stderr = process.communicate()
-            
+
             assert "Tools loaded: 3" in stdout
             assert "Has system_info: True" in stdout
-            
+
         except FileNotFoundError:
             pytest.skip("Python module not available")
 
-    def test_end_to_end_tool_execution(self, system_test_environment, system_environment_vars):
+    def test_end_to_end_tool_execution(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test end-to-end tool execution through the system."""
         try:
             process = subprocess.Popen(
-                ['python', '-m', 'burly_mcp.server.main'],
+                ["python", "-m", "burly_mcp.server.main"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env={**os.environ, **system_environment_vars},
-                text=True
+                text=True,
             )
-            
+
             time.sleep(2)
-            
+
             if process.poll() is not None:
                 pytest.skip("System not available")
-            
+
             # Test tool execution
             request = {
                 "method": "call_tool",
                 "name": "system_info",
-                "args": {"info_type": "os"}
+                "args": {"info_type": "os"},
             }
-            
-            process.stdin.write(json.dumps(request) + '\n')
+
+            process.stdin.write(json.dumps(request) + "\n")
             process.stdin.flush()
-            
+
             response_line = process.stdout.readline()
             response = json.loads(response_line)
-            
-            assert response['ok'] is True
-            assert len(response['stdout']) > 0
-            assert response['metrics']['exit_code'] == 0
-            
+
+            assert response["ok"] is True
+            assert len(response["stdout"]) > 0
+            assert response["metrics"]["exit_code"] == 0
+
             process.terminate()
             process.wait(timeout=5)
-            
+
         except FileNotFoundError:
             pytest.skip("System not available")
 
-    def test_error_handling_and_recovery(self, system_test_environment, system_environment_vars):
+    def test_error_handling_and_recovery(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test system error handling and recovery."""
         try:
             process = subprocess.Popen(
-                ['python', '-m', 'burly_mcp.server.main'],
+                ["python", "-m", "burly_mcp.server.main"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env={**os.environ, **system_environment_vars},
-                text=True
+                text=True,
             )
-            
+
             time.sleep(2)
-            
+
             if process.poll() is not None:
                 pytest.skip("System not available")
-            
+
             # Send invalid request
             invalid_request = {"method": "invalid_method"}
-            process.stdin.write(json.dumps(invalid_request) + '\n')
+            process.stdin.write(json.dumps(invalid_request) + "\n")
             process.stdin.flush()
-            
+
             error_response_line = process.stdout.readline()
             error_response = json.loads(error_response_line)
-            assert error_response['ok'] is False
-            
+            assert error_response["ok"] is False
+
             # Send valid request after error
             valid_request = {
                 "method": "call_tool",
                 "name": "system_info",
-                "args": {"info_type": "os"}
+                "args": {"info_type": "os"},
             }
-            
-            process.stdin.write(json.dumps(valid_request) + '\n')
+
+            process.stdin.write(json.dumps(valid_request) + "\n")
             process.stdin.flush()
-            
+
             valid_response_line = process.stdout.readline()
             valid_response = json.loads(valid_response_line)
-            
+
             # System should recover
-            assert valid_response['ok'] is True
-            
+            assert valid_response["ok"] is True
+
             process.terminate()
             process.wait(timeout=5)
-            
+
         except FileNotFoundError:
             pytest.skip("System not available")
 
-    def test_security_enforcement(self, system_test_environment, system_environment_vars):
+    def test_security_enforcement(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test security enforcement throughout the system."""
         # This would test various security features:
         # - Path validation
@@ -342,186 +364,206 @@ print(f"Has system_info: {'system_info' in engine.policy_data.get('tools', {})}"
         # - Audit logging
         pass
 
-    def test_notification_system_integration(self, system_test_environment, system_environment_vars):
+    def test_notification_system_integration(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test notification system integration."""
         # Test with notifications enabled
         notification_env = system_environment_vars.copy()
-        notification_env.update({
-            'NOTIFICATIONS_ENABLED': 'true',
-            'GOTIFY_URL': 'http://localhost:8080',  # Mock URL
-            'GOTIFY_TOKEN': 'test_token'
-        })
-        
+        notification_env.update(
+            {
+                "NOTIFICATIONS_ENABLED": "true",
+                "GOTIFY_URL": "http://localhost:8080",  # Mock URL
+                "GOTIFY_TOKEN": "test_token",
+            }
+        )
+
         # This would test notification functionality
         # when integrated with the system
         pass
 
-    def test_audit_logging_integration(self, system_test_environment, system_environment_vars):
+    def test_audit_logging_integration(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test audit logging integration."""
         try:
             process = subprocess.Popen(
-                ['python', '-m', 'burly_mcp.server.main'],
+                ["python", "-m", "burly_mcp.server.main"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env={**os.environ, **system_environment_vars},
-                text=True
+                text=True,
             )
-            
+
             time.sleep(2)
-            
+
             if process.poll() is not None:
                 pytest.skip("System not available")
-            
+
             # Execute a tool to generate audit logs
             request = {
                 "method": "call_tool",
                 "name": "system_info",
-                "args": {"info_type": "os"}
+                "args": {"info_type": "os"},
             }
-            
-            process.stdin.write(json.dumps(request) + '\n')
+
+            process.stdin.write(json.dumps(request) + "\n")
             process.stdin.flush()
-            
+
             response_line = process.stdout.readline()
             response = json.loads(response_line)
-            
-            assert response['ok'] is True
-            
+
+            assert response["ok"] is True
+
             process.terminate()
             process.wait(timeout=5)
-            
+
             # Check for audit logs
-            logs_dir = system_test_environment['logs_dir']
+            logs_dir = system_test_environment["logs_dir"]
             if logs_dir.exists():
-                log_files = list(logs_dir.glob('*.log'))
+                log_files = list(logs_dir.glob("*.log"))
                 # If audit logging is implemented, there should be log files
-                
+
         except FileNotFoundError:
             pytest.skip("System not available")
 
-    def test_resource_limit_enforcement(self, system_test_environment, system_environment_vars):
+    def test_resource_limit_enforcement(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test resource limit enforcement in the system."""
         # Test with strict resource limits
         resource_env = system_environment_vars.copy()
-        resource_env.update({
-            'MAX_MEMORY_MB': '128',
-            'MAX_CPU_PERCENT': '50',
-            'MAX_EXECUTION_TIME_SEC': '5'
-        })
-        
+        resource_env.update(
+            {
+                "MAX_MEMORY_MB": "128",
+                "MAX_CPU_PERCENT": "50",
+                "MAX_EXECUTION_TIME_SEC": "5",
+            }
+        )
+
         # This would test that resource limits are enforced
         # during tool execution
         pass
 
     @pytest.mark.docker
-    def test_docker_integration_in_system(self, system_test_environment, system_environment_vars):
+    def test_docker_integration_in_system(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test Docker integration within the complete system."""
         # This would test Docker functionality
         # when integrated with the complete system
         pass
 
-    def test_blog_management_integration(self, system_test_environment, system_environment_vars):
+    def test_blog_management_integration(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test blog management integration."""
         try:
             process = subprocess.Popen(
-                ['python', '-m', 'burly_mcp.server.main'],
+                ["python", "-m", "burly_mcp.server.main"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env={**os.environ, **system_environment_vars},
-                text=True
+                text=True,
             )
-            
+
             time.sleep(2)
-            
+
             if process.poll() is not None:
                 pytest.skip("System not available")
-            
+
             # Test blog listing
             request = {
                 "method": "call_tool",
                 "name": "blog_management",
-                "args": {"action": "list"}
+                "args": {"action": "list"},
             }
-            
-            process.stdin.write(json.dumps(request) + '\n')
+
+            process.stdin.write(json.dumps(request) + "\n")
             process.stdin.flush()
-            
+
             response_line = process.stdout.readline()
             response = json.loads(response_line)
-            
+
             # Should execute successfully
-            assert response['ok'] is True
-            
+            assert response["ok"] is True
+
             process.terminate()
             process.wait(timeout=5)
-            
+
         except FileNotFoundError:
             pytest.skip("System not available")
 
-    def test_system_performance_under_load(self, system_test_environment, system_environment_vars):
+    def test_system_performance_under_load(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test system performance under load."""
         try:
             process = subprocess.Popen(
-                ['python', '-m', 'burly_mcp.server.main'],
+                ["python", "-m", "burly_mcp.server.main"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env={**os.environ, **system_environment_vars},
-                text=True
+                text=True,
             )
-            
+
             time.sleep(2)
-            
+
             if process.poll() is not None:
                 pytest.skip("System not available")
-            
+
             # Send multiple requests rapidly
             start_time = time.time()
             num_requests = 10
-            
+
             for i in range(num_requests):
                 request = {
                     "method": "call_tool",
                     "name": "system_info",
-                    "args": {"info_type": "os"}
+                    "args": {"info_type": "os"},
                 }
-                
-                process.stdin.write(json.dumps(request) + '\n')
+
+                process.stdin.write(json.dumps(request) + "\n")
                 process.stdin.flush()
-            
+
             # Read all responses
             responses = []
             for i in range(num_requests):
                 response_line = process.stdout.readline()
                 response = json.loads(response_line)
                 responses.append(response)
-            
+
             end_time = time.time()
             total_time = end_time - start_time
-            
+
             # Verify all responses
             assert len(responses) == num_requests
             for response in responses:
-                assert response['ok'] is True
-            
+                assert response["ok"] is True
+
             # Performance check (should handle 10 requests reasonably quickly)
             assert total_time < 30.0  # Should complete within 30 seconds
-            
+
             process.terminate()
             process.wait(timeout=5)
-            
+
         except FileNotFoundError:
             pytest.skip("System not available")
 
-    def test_configuration_hot_reload(self, system_test_environment, system_environment_vars):
+    def test_configuration_hot_reload(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test configuration hot reload functionality."""
         # This would test the ability to reload configuration
         # without restarting the system
         pass
 
-    def test_system_cleanup_and_resource_management(self, system_test_environment, system_environment_vars):
+    def test_system_cleanup_and_resource_management(
+        self, system_test_environment, system_environment_vars
+    ):
         """Test system cleanup and resource management."""
         # This would test that the system properly cleans up
         # resources, temporary files, and handles shutdown gracefully
