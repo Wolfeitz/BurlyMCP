@@ -22,12 +22,15 @@ except ImportError:
 
 @pytest.mark.integration
 @pytest.mark.docker
+@pytest.mark.skipif(not TESTCONTAINERS_AVAILABLE, reason="testcontainers not available")
 class TestDockerIntegration:
     """Integration tests for Docker functionality."""
 
     @pytest.fixture(scope="class")
     def docker_client(self):
         """Provide Docker client for integration tests."""
+        if not TESTCONTAINERS_AVAILABLE:
+            pytest.skip("testcontainers not available")
         try:
             client = docker.from_env()
             client.ping()
@@ -266,6 +269,7 @@ class TestDockerIntegration:
 
 @pytest.mark.integration
 @pytest.mark.docker
+@pytest.mark.skipif(not TESTCONTAINERS_AVAILABLE, reason="testcontainers not available")
 class TestDockerComposeIntegration:
     """Integration tests using Docker Compose."""
 
