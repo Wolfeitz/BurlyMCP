@@ -6,18 +6,18 @@ import pytest
 from unittest.mock import Mock, patch, mock_open
 from pathlib import Path
 import yaml
-from burly_mcp.policy.engine import PolicyEngine, PolicyValidationError
+from burly_mcp.policy.engine import PolicyLoader, PolicyValidationError
 
 
-class TestPolicyEngine:
-    """Test the policy engine functionality."""
+class TestPolicyLoader:
+    """Test the policy loader functionality."""
 
-    def test_policy_engine_initialization(self):
-        """Test policy engine initialization."""
-        engine = PolicyEngine()
-        assert hasattr(engine, "policy_data")
-        assert hasattr(engine, "tools")
-        assert hasattr(engine, "config")
+    def test_policy_loader_initialization(self):
+        """Test policy loader initialization."""
+        loader = PolicyLoader()
+        assert hasattr(loader, "policy_file_path")
+        assert hasattr(loader, "_tools")
+        assert hasattr(loader, "_config")
 
     def test_load_policy_from_file(self, sample_policy_yaml, tmp_path):
         """Test loading policy from YAML file."""
