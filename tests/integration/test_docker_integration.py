@@ -55,21 +55,24 @@ class TestDockerIntegration:
 
     def test_container_lifecycle(self, docker_client):
         """Test container creation, start, stop, and removal."""
-        # Create container
+        # Create container without auto-remove to get logs
         container = docker_client.containers.run(
             "alpine:latest",
             command="echo 'Hello from container'",
             detach=True,
-            remove=True,
         )
 
-        # Wait for container to complete
-        result = container.wait()
-        assert result["StatusCode"] == 0
+        try:
+            # Wait for container to complete
+            result = container.wait()
+            assert result["StatusCode"] == 0
 
-        # Get logs
-        logs = container.logs().decode("utf-8")
-        assert "Hello from container" in logs
+            # Get logs
+            logs = container.logs().decode("utf-8")
+            assert "Hello from container" in logs
+        finally:
+            # Clean up
+            container.remove()
 
     def test_container_with_volume_mount(self, docker_client, tmp_path):
         """Test container with volume mount."""
@@ -83,15 +86,17 @@ class TestDockerIntegration:
             command="cat /mounted/test.txt",
             volumes={str(tmp_path): {"bind": "/mounted", "mode": "ro"}},
             detach=True,
-            remove=True,
         )
 
-        # Wait and get result
-        result = container.wait()
-        assert result["StatusCode"] == 0
+        try:
+            # Wait and get result
+            result = container.wait()
+            assert result["StatusCode"] == 0
 
-        logs = container.logs().decode("utf-8")
-        assert "Test content from host" in logs
+            logs = container.logs().decode("utf-8")
+            assert "Test content from host" in logs
+        finally:
+            container.remove()
 
     def test_container_environment_variables(self, docker_client):
         """Test container with environment variables."""
@@ -100,14 +105,16 @@ class TestDockerIntegration:
             command="sh -c 'echo $TEST_VAR'",
             environment={"TEST_VAR": "test_value"},
             detach=True,
-            remove=True,
         )
 
-        result = container.wait()
-        assert result["StatusCode"] == 0
+        try:
+            result = container.wait()
+            assert result["StatusCode"] == 0
 
-        logs = container.logs().decode("utf-8")
-        assert "test_value" in logs
+            logs = container.logs().decode("utf-8")
+            assert "test_value" in logs
+        finally:
+            container.remove()
 
     def test_container_network_isolation(self, docker_client):
         """Test container network isolation."""

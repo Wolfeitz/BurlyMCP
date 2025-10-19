@@ -61,10 +61,22 @@ class TestSecurityValidator:
 
         # Mock a symlink that points outside allowed paths
         with patch("pathlib.Path.resolve") as mock_resolve:
-            mock_resolve.return_value = Path("/etc/passwd")
-
-            result = validator.validate_path(Path("/tmp/malicious_symlink"))
-            assert result is False
+            # Mock both the path and allowed_path resolve calls
+            def mock_resolve_side_effect(path_obj):
+                if str(path_obj) == "/tmp/malicious_symlink":
+                    return Path("/etc/passwd")  # Symlink points outside
+                elif str(path_obj) == "/tmp":
+                    return Path("/tmp")  # Allowed path resolves normally
+                return path_obj
+            
+            mock_resolve.side_effect = lambda: mock_resolve_side_effect(mock_resolve.return_value)
+            
+            # Set up the mock to return the malicious path
+            with patch.object(Path, 'resolve') as path_resolve:
+                path_resolve.side_effect = mock_resolve_side_effect
+                
+                result = validator.validate_path(Path("/tmp/malicious_symlink"))
+                assert result is False
 
     def test_validate_path_invalid_path(self):
         """Test handling of invalid paths."""
@@ -74,7 +86,7 @@ class TestSecurityValidator:
         validator.allowed_paths = [Path("/tmp")]
 
         # Test with path that raises OSError during resolution
-        with patch("pathlib.Path.resolve") as mock_resolve:
+        with patch.object(Path, 'resolve') as mock_resolve:
             mock_resolve.side_effect = OSError("Invalid path")
 
             result = validator.validate_path(Path("/invalid/path"))

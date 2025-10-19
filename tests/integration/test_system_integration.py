@@ -11,11 +11,20 @@ import shutil
 from pathlib import Path
 import os
 import yaml
-from testcontainers.core.generic import DockerContainer
+
+try:
+    from testcontainers.core.generic import DockerContainer
+    import docker
+    TESTCONTAINERS_AVAILABLE = True
+except ImportError:
+    TESTCONTAINERS_AVAILABLE = False
+    DockerContainer = None
+    docker = None
 
 
 @pytest.mark.integration
 @pytest.mark.slow
+@pytest.mark.skipif(not TESTCONTAINERS_AVAILABLE, reason="testcontainers not available")
 class TestSystemIntegration:
     """End-to-end system integration tests."""
 

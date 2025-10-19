@@ -115,6 +115,11 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "-ra",
+    "--cov=burly_mcp",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-fail-under=80",
 ]
 markers = [
     "unit: Unit tests that don't require external dependencies",
@@ -191,13 +196,21 @@ exclude = [
 
 [tool.coverage.run]
 source = ["src/burly_mcp"]
+branch = true
 omit = [
     "*/tests/*",
     "*/test_*",
     "*/__pycache__/*",
+    "*/conftest.py",
+    "*/.venv/*",
+    "*/venv/*",
 ]
 
 [tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
@@ -209,4 +222,17 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",
 ]
+
+[tool.coverage.html]
+directory = "htmlcov"
+title = "Burly MCP Coverage Report"
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+[tool.coverage.json]
+output = "coverage.json"
+pretty_print = true
