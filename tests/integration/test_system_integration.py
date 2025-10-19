@@ -11,7 +11,7 @@ import shutil
 from pathlib import Path
 import os
 import yaml
-from testcontainers.generic import GenericContainer
+from testcontainers.core.generic import DockerContainer
 
 
 @pytest.mark.integration
