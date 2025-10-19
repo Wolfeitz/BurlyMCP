@@ -3,12 +3,21 @@ Integration tests for Docker operations using test containers.
 """
 
 import pytest
-from testcontainers.compose import DockerCompose
-from testcontainers.generic import GenericContainer
-import docker
 import time
 import requests
 from pathlib import Path
+
+try:
+    from testcontainers.compose import DockerCompose
+    from testcontainers import GenericContainer
+    import docker
+
+    TESTCONTAINERS_AVAILABLE = True
+except ImportError:
+    TESTCONTAINERS_AVAILABLE = False
+    DockerCompose = None
+    GenericContainer = None
+    docker = None
 
 
 @pytest.mark.integration
