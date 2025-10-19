@@ -6,7 +6,13 @@ import pytest
 from unittest.mock import Mock, patch, mock_open
 from pathlib import Path
 import yaml
-from burly_mcp.policy.engine import PolicyLoader, PolicyValidationError, PolicyLoadError, SchemaValidator, SchemaValidationError
+from burly_mcp.policy.engine import (
+    PolicyLoader,
+    PolicyValidationError,
+    PolicyLoadError,
+    SchemaValidator,
+    SchemaValidationError,
+)
 
 
 class TestPolicyLoader:
@@ -207,7 +213,7 @@ config:
 
         loader = PolicyLoader(str(policy_file))
         loader.load_policy()
-        
+
         validator = SchemaValidator()
         tool_def = loader.get_tool_definition("test_tool")
         assert tool_def is not None
@@ -224,7 +230,7 @@ config:
 
         loader = PolicyLoader(str(policy_file))
         loader.load_policy()
-        
+
         validator = SchemaValidator()
         tool_def = loader.get_tool_definition("test_tool")
         assert tool_def is not None
@@ -246,8 +252,8 @@ config:
         config = loader.get_config()
 
         assert config is not None
-        assert hasattr(config, 'blog_stage_root')
-        assert hasattr(config, 'blog_publish_root')
+        assert hasattr(config, "blog_stage_root")
+        assert hasattr(config, "blog_publish_root")
 
     def test_is_path_allowed(self, sample_policy_yaml, tmp_path):
         """Test path validation against security policy."""
