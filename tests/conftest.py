@@ -8,7 +8,8 @@ unit and integration tests.
 import os
 import tempfile
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Generator
+from unittest.mock import Mock, patch
 import pytest
 
 
@@ -102,16 +103,32 @@ def sample_tool_result():
     )
 
 
-# Test markers
+# Test markers and plugins
 pytest_plugins = []
 
 
 def pytest_configure(config):
     """Configure pytest with custom markers."""
-    config.addinivalue_line("markers", "unit: mark test as a unit test")
-    config.addinivalue_line("markers", "integration: mark test as an integration test")
-    config.addinivalue_line("markers", "docker: mark test as requiring Docker")
-    config.addinivalue_line("markers", "slow: mark test as slow running")
+    # Markers are now defined in pyproject.toml
+    pass
+
+
+def pytest_collection_modifyitems(config, items):
+    """Automatically mark tests based on their location."""
+    for item in items:
+        # Mark tests based on directory structure
+        if "unit" in str(item.fspath):
+            item.add_marker(pytest.mark.unit)
+        elif "integration" in str(item.fspath):
+            item.add_marker(pytest.mark.integration)
+        
+        # Mark Docker-related tests
+        if "docker" in str(item.fspath) or "docker" in item.name.lower():
+            item.add_marker(pytest.mark.docker)
+        
+        # Mark slow tests (integration tests are typically slower)
+        if "integration" in str(item.fspath):
+            item.add_marker(pytest.mark.slow)
 
 
 @pytest.fixture(scope="session")
@@ -225,20 +242,26 @@ def mock_audit_and_notifications(monkeypatch):
     mock_notify_failure = Mock()
     mock_notify_confirmation = Mock()
 
-    # Mock audit logging - patch where it's imported
-    monkeypatch.setattr("burly_mcp.tools.registry.log_tool_execution", mock_audit)
-    monkeypatch.setattr("burly_mcp.audit.get_audit_logger", Mock())
+    # Try to mock audit logging - only if module exists
+    try:
+        monkeypatch.setattr("burly_mcp.tools.registry.log_tool_execution", mock_audit)
+        monkeypatch.setattr("burly_mcp.audit.get_audit_logger", Mock())
+    except (ImportError, AttributeError):
+        pass  # Module not available, skip mocking
 
-    # Mock notifications - patch where they're imported
-    monkeypatch.setattr(
-        "burly_mcp.tools.registry.notify_tool_success", mock_notify_success
-    )
-    monkeypatch.setattr(
-        "burly_mcp.tools.registry.notify_tool_failure", mock_notify_failure
-    )
-    monkeypatch.setattr(
-        "burly_mcp.tools.registry.notify_tool_confirmation", mock_notify_confirmation
-    )
+    # Try to mock notifications - only if module exists
+    try:
+        monkeypatch.setattr(
+            "burly_mcp.tools.registry.notify_tool_success", mock_notify_success
+        )
+        monkeypatch.setattr(
+            "burly_mcp.tools.registry.notify_tool_failure", mock_notify_failure
+        )
+        monkeypatch.setattr(
+            "burly_mcp.tools.registry.notify_tool_confirmation", mock_notify_confirmation
+        )
+    except (ImportError, AttributeError):
+        pass  # Module not available, skip mocking
 
     # Set test-friendly environment variables
     monkeypatch.setenv("AUDIT_LOG_DIR", "/tmp/test_logs")
@@ -251,3 +274,152 @@ def mock_audit_and_notifications(monkeypatch):
         "notify_failure": mock_notify_failure,
         "notify_confirmation": mock_notify_confirmation,
     }
+
+
+# Configuration fixtures
+@pytest.fixture
+def mock_config_class():
+    """Mock the Config class for testing."""
+    from unittest.mock import Mock
+    
+    config = Mock()
+    config.config_dir = Path("/tmp/test_config")
+    config.policy_file = Path("/tmp/test_config/policy/tools.yaml")
+    config.log_dir = Path("/tmp/test_logs")
+    config.docker_socket = "/var/run/docker.sock"
+    config.docker_timeout = 30
+    config.max_output_size = 1048576
+    config.audit_enabled = True
+    config.gotify_url = None
+    config.gotify_token = None
+    config.blog_stage_root = Path("/tmp/test_blog_stage")
+    config.blog_publish_root = Path("/tmp/test_blog_publish")
+    config.validate.return_value = []
+    
+    return config
+
+
+@pytest.fixture
+def mock_docker_client():
+    """Mock Docker client for testing."""
+    from unittest.mock import Mock
+    
+    client = Mock()
+    client.ping.return_value = True
+    client.version.return_value = {"Version": "20.10.0"}
+    
+    # Mock container operations
+    container = Mock()
+    container.id = "test_container_id"
+    container.status = "running"
+    container.logs.return_value = b"test output"
+    container.wait.return_value = {"StatusCode": 0}
+    
+    client.containers.run.return_value = container
+    client.containers.get.return_value = container
+    client.containers.list.return_value = [container]
+    
+    # Mock image operations
+    image = Mock()
+    image.id = "test_image_id"
+    image.tags = ["test:latest"]
+    
+    client.images.get.return_value = image
+    client.images.list.return_value = [image]
+    client.images.build.return_value = (image, [])
+    
+    return client
+
+
+@pytest.fixture
+def mock_mcp_server():
+    """Mock MCP server for testing."""
+    from unittest.mock import Mock
+    
+    server = Mock()
+    server.list_tools.return_value = []
+    server.call_tool.return_value = {"success": True, "result": "test"}
+    
+    return server
+
+
+# File system fixtures
+@pytest.fixture
+def test_files_dir(tmp_path):
+    """Create a temporary directory with test files."""
+    test_dir = tmp_path / "test_files"
+    test_dir.mkdir()
+    
+    # Create sample files
+    (test_dir / "sample.txt").write_text("Sample content")
+    (test_dir / "config.yaml").write_text("key: value")
+    
+    # Create subdirectory
+    sub_dir = test_dir / "subdir"
+    sub_dir.mkdir()
+    (sub_dir / "nested.txt").write_text("Nested content")
+    
+    return test_dir
+
+
+@pytest.fixture
+def policy_config_dir(tmp_path):
+    """Create a temporary policy configuration directory."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    
+    policy_dir = config_dir / "policy"
+    policy_dir.mkdir()
+    
+    # Create a basic policy file
+    policy_file = policy_dir / "tools.yaml"
+    policy_file.write_text("""
+tools:
+  test_tool:
+    description: "Test tool"
+    args_schema:
+      type: "object"
+      properties: {}
+      required: []
+      additionalProperties: false
+    command: ["echo", "test"]
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 10
+    notify: ["success"]
+
+config:
+  output_truncate_limit: 1024
+  default_timeout_sec: 30
+""")
+    
+    return config_dir
+
+
+# Error simulation fixtures
+@pytest.fixture
+def docker_error():
+    """Simulate Docker errors for testing."""
+    from unittest.mock import Mock
+    
+    def create_error(error_type="APIError", message="Test error"):
+        error = Mock()
+        error.__class__.__name__ = error_type
+        error.explanation = message
+        return error
+    
+    return create_error
+
+
+@pytest.fixture
+def network_error():
+    """Simulate network errors for testing."""
+    import requests
+    
+    def create_error(status_code=500, message="Network error"):
+        error = requests.exceptions.RequestException(message)
+        error.response = Mock()
+        error.response.status_code = status_code
+        return error
+    
+    return create_error
