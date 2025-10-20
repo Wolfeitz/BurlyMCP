@@ -18,13 +18,14 @@ class TestSecurityValidator:
         validator = SecurityValidator()
         assert hasattr(validator, "allowed_paths")
         assert isinstance(validator.allowed_paths, list)
+        assert hasattr(validator, "dangerous_commands")
+        assert hasattr(validator, "dangerous_env_vars")
 
     def test_validate_path_allowed(self):
         """Test path validation for allowed paths."""
         from burly_mcp.security import SecurityValidator
 
-        validator = SecurityValidator()
-        validator.allowed_paths = [Path("/tmp"), Path("/var/tmp")]
+        validator = SecurityValidator(allowed_paths=["/tmp", "/var/tmp"])
 
         # Test allowed path
         assert validator.validate_path(Path("/tmp/test.txt")) is True
@@ -34,8 +35,7 @@ class TestSecurityValidator:
         """Test path validation for disallowed paths."""
         from burly_mcp.security import SecurityValidator
 
-        validator = SecurityValidator()
-        validator.allowed_paths = [Path("/tmp")]
+        validator = SecurityValidator(allowed_paths=["/tmp"])
 
         # Test disallowed paths
         assert validator.validate_path(Path("/etc/passwd")) is False
@@ -45,8 +45,7 @@ class TestSecurityValidator:
         """Test protection against path traversal attacks."""
         from burly_mcp.security import SecurityValidator
 
-        validator = SecurityValidator()
-        validator.allowed_paths = [Path("/tmp")]
+        validator = SecurityValidator(allowed_paths=["/tmp"])
 
         # Test path traversal attempts
         assert validator.validate_path(Path("/tmp/../etc/passwd")) is False
@@ -162,10 +161,13 @@ class TestSecurityValidator:
 
         # Test within limits
         assert validator.check_resource_limits(memory_mb=100, cpu_percent=50) is True
+        assert validator.check_resource_limits(memory_mb=16384, cpu_percent=100) is True  # Max allowed
 
         # Test exceeding limits
-        assert validator.check_resource_limits(memory_mb=10000, cpu_percent=50) is False
-        assert validator.check_resource_limits(memory_mb=100, cpu_percent=200) is False
+        assert validator.check_resource_limits(memory_mb=20000, cpu_percent=50) is False  # > 16GB
+        assert validator.check_resource_limits(memory_mb=100, cpu_percent=200) is False   # > 100%
+        assert validator.check_resource_limits(memory_mb=0, cpu_percent=50) is False      # < 1MB
+        assert validator.check_resource_limits(memory_mb=100, cpu_percent=0) is False     # < 1%
 
     def test_validate_environment_variables(self):
         """Test environment variable validation."""
