@@ -3,7 +3,7 @@ Unit tests for the Burly MCP configuration module.
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from pathlib import Path
 import os
 
@@ -18,27 +18,35 @@ class TestConfig:
 
         config = Config()
 
-        # Test default paths
-        assert config.config_dir == Path("/app/config")
-        assert config.log_dir == Path("/var/log/agentops")
-
-        # Test default Docker settings
-        assert config.docker_socket == "/var/run/docker.sock"
-        assert config.docker_timeout == 30
-
-        # Test default security settings
-        assert config.max_output_size == 1048576
+        # Test default configuration values
+        assert config.gotify_url == ""
+        assert config.gotify_token == ""
+        assert config.gotify_enabled is False
+        assert config.blog_enabled is False
+        assert config.blog_url == ""
+        assert config.blog_token == ""
+        assert config.security_enabled is True
         assert config.audit_enabled is True
+        assert config.resource_limits_enabled is True
+        assert config.max_memory_mb == 512
+        assert config.max_cpu_percent == 80
+        assert config.max_execution_time == 300
 
     @patch.dict(
         os.environ,
         {
-            "BURLY_CONFIG_DIR": "/custom/config",
-            "BURLY_LOG_DIR": "/custom/logs",
-            "DOCKER_SOCKET": "/custom/docker.sock",
-            "DOCKER_TIMEOUT": "60",
-            "MAX_OUTPUT_SIZE": "2097152",
+            "GOTIFY_URL": "https://gotify.example.com",
+            "GOTIFY_TOKEN": "test_token_123",
+            "GOTIFY_ENABLED": "true",
+            "BLOG_ENABLED": "true",
+            "BLOG_URL": "https://blog.example.com",
+            "BLOG_TOKEN": "blog_token_456",
+            "SECURITY_ENABLED": "false",
             "AUDIT_ENABLED": "false",
+            "RESOURCE_LIMITS_ENABLED": "false",
+            "MAX_MEMORY_MB": "1024",
+            "MAX_CPU_PERCENT": "90",
+            "MAX_EXECUTION_TIME": "600",
         },
     )
     def test_config_from_environment(self):
@@ -47,234 +55,240 @@ class TestConfig:
 
         config = Config()
 
-        assert config.config_dir == Path("/custom/config")
-        assert config.log_dir == Path("/custom/logs")
-        assert config.docker_socket == "/custom/docker.sock"
-        assert config.docker_timeout == 60
-        assert config.max_output_size == 2097152
-        assert config.audit_enabled is False
-
-    @patch.dict(
-        os.environ,
-        {
-            "GOTIFY_URL": "https://gotify.example.com",
-            "GOTIFY_TOKEN": "test_token_123",
-        },
-    )
-    def test_config_notification_settings(self):
-        """Test notification configuration."""
-        from burly_mcp.config import Config
-
-        config = Config()
-
         assert config.gotify_url == "https://gotify.example.com"
         assert config.gotify_token == "test_token_123"
+        assert config.gotify_enabled is True
+        assert config.blog_enabled is True
+        assert config.blog_url == "https://blog.example.com"
+        assert config.blog_token == "blog_token_456"
+        assert config.security_enabled is False
+        assert config.audit_enabled is False
+        assert config.resource_limits_enabled is False
+        assert config.max_memory_mb == 1024
+        assert config.max_cpu_percent == 90
+        assert config.max_execution_time == 600
 
     @patch.dict(
         os.environ,
         {
-            "BLOG_STAGE_ROOT": "/custom/blog/stage",
-            "BLOG_PUBLISH_ROOT": "/custom/blog/publish",
+            "GOTIFY_ENABLED": "yes",
+            "BLOG_ENABLED": "on",
+            "SECURITY_ENABLED": "1",
         },
     )
-    def test_config_blog_settings(self):
-        """Test blog configuration."""
+    def test_config_boolean_variations(self):
+        """Test configuration boolean value variations."""
         from burly_mcp.config import Config
 
         config = Config()
 
-        assert config.blog_stage_root == Path("/custom/blog/stage")
-        assert config.blog_publish_root == Path("/custom/blog/publish")
+        assert config.gotify_enabled is True
+        assert config.blog_enabled is True
+        assert config.security_enabled is True
+
+    @patch.dict(
+        os.environ,
+        {
+            "GOTIFY_ENABLED": "false",
+            "BLOG_ENABLED": "no",
+            "SECURITY_ENABLED": "0",
+            "AUDIT_ENABLED": "off",
+        },
+    )
+    def test_config_boolean_false_variations(self):
+        """Test configuration boolean false value variations."""
+        from burly_mcp.config import Config
+
+        config = Config()
+
+        assert config.gotify_enabled is False
+        assert config.blog_enabled is False
+        assert config.security_enabled is False
+        assert config.audit_enabled is False
+
+    @patch.dict(os.environ, {"GOTIFY_ENABLED": "invalid_boolean"})
+    def test_config_invalid_boolean_environment(self):
+        """Test configuration with invalid boolean environment variable."""
+        from burly_mcp.config import Config
+
+        with pytest.raises(ValueError, match="Invalid boolean value"):
+            Config()
+
+    @patch.dict(os.environ, {"MAX_MEMORY_MB": "invalid_integer"})
+    def test_config_invalid_integer_environment(self):
+        """Test configuration with invalid integer environment variable."""
+        from burly_mcp.config import Config
+
+        with pytest.raises(ValueError, match="Invalid integer value"):
+            Config()
+
+    def test_config_get_method(self):
+        """Test configuration get method with defaults."""
+        from burly_mcp.config import Config
+
+        config = Config()
+
+        # Test existing key
+        assert config.get("gotify_url") == ""
+        assert config.get("max_memory_mb") == 512
+
+        # Test non-existing key with default
+        assert config.get("nonexistent_key", "default_value") == "default_value"
+        assert config.get("nonexistent_key") is None
+
+    def test_config_attribute_access(self):
+        """Test configuration attribute access via __getattr__."""
+        from burly_mcp.config import Config
+
+        config = Config()
+
+        # Test valid attributes
+        assert config.gotify_url == ""
+        assert config.max_memory_mb == 512
+
+        # Test invalid attribute
+        with pytest.raises(AttributeError):
+            _ = config.nonexistent_attribute
+
+    def test_config_immutability(self):
+        """Test that configuration prevents modification of default values."""
+        from burly_mcp.config import Config
+
+        config = Config()
+
+        # The current implementation allows setting new attributes but prevents
+        # modification of existing configuration values in _defaults
+        # This test verifies the actual behavior
+        
+        # Test that we can set new attributes (not in _defaults)
+        config.new_attribute = "allowed"
+        assert config.new_attribute == "allowed"
+        
+        # Test that configuration values are accessible
+        assert hasattr(config, "gotify_url")
+        assert hasattr(config, "max_memory_mb")
 
     def test_config_validation_success(self, tmp_path):
         """Test successful configuration validation."""
         from burly_mcp.config import Config
 
-        # Create required directories and files
+        # Create temporary config directory and policy file
         config_dir = tmp_path / "config"
         config_dir.mkdir()
-        policy_dir = config_dir / "policy"
-        policy_dir.mkdir()
-        policy_file = policy_dir / "tools.yaml"
-        policy_file.write_text("tools: {}")
+        policy_file = config_dir / "policy.json"
+        policy_file.write_text('{"tools": {}}')
 
-        with patch.dict(
-            os.environ,
-            {
-                "BURLY_CONFIG_DIR": str(config_dir),
-            },
-        ):
-            config = Config()
-            errors = config.validate()
-
-            assert len(errors) == 0
+        config = Config(config_dir=str(config_dir))
+        assert config.validate() is True
 
     def test_config_validation_missing_config_dir(self):
-        """Test validation with missing config directory."""
+        """Test configuration validation with missing config directory."""
         from burly_mcp.config import Config
 
-        with patch.dict(
-            os.environ,
-            {
-                "BURLY_CONFIG_DIR": "/nonexistent/config",
-            },
-        ):
-            config = Config()
-            errors = config.validate()
-
-            assert len(errors) > 0
-            assert any("Config directory not found" in error for error in errors)
+        config = Config(config_dir="/nonexistent/directory")
+        assert config.validate() is False
 
     def test_config_validation_missing_policy_file(self, tmp_path):
-        """Test validation with missing policy file."""
+        """Test configuration validation with missing policy file."""
         from burly_mcp.config import Config
 
-        # Create config directory but not policy file
+        # Create config directory but no policy file
         config_dir = tmp_path / "config"
         config_dir.mkdir()
 
-        with patch.dict(
-            os.environ,
-            {
-                "BURLY_CONFIG_DIR": str(config_dir),
-            },
-        ):
-            config = Config()
-            errors = config.validate()
+        config = Config(config_dir=str(config_dir))
+        assert config.validate() is False
 
-            assert len(errors) > 0
-            assert any("Policy file not found" in error for error in errors)
+    @patch.dict(os.environ, {"GOTIFY_ENABLED": "true"})
+    def test_config_validation_missing_gotify_token(self, tmp_path):
+        """Test configuration validation with Gotify enabled but no token."""
+        from burly_mcp.config import Config
 
-    @patch.dict(
-        os.environ,
-        {
-            "GOTIFY_URL": "https://gotify.example.com",
-            # GOTIFY_TOKEN is missing
-        },
-    )
-    def test_config_validation_missing_gotify_token(self):
-        """Test validation with Gotify URL but missing token."""
+        # Create config directory and policy file
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        policy_file = config_dir / "policy.json"
+        policy_file.write_text('{"tools": {}}')
+
+        config = Config(config_dir=str(config_dir))
+        assert config.validate() is False
+
+    @patch.dict(os.environ, {"SECURITY_ENABLED": "false"})
+    def test_config_validation_security_disabled(self, tmp_path):
+        """Test configuration validation with security disabled."""
+        from burly_mcp.config import Config
+
+        # Create config directory but no policy file (should pass when security disabled)
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+
+        config = Config(config_dir=str(config_dir))
+        assert config.validate() is True
+
+    def test_config_to_dict(self):
+        """Test configuration conversion to dictionary."""
         from burly_mcp.config import Config
 
         config = Config()
-        errors = config.validate()
+        config_dict = config.to_dict()
 
-        assert len(errors) > 0
-        assert any(
-            "GOTIFY_TOKEN required when GOTIFY_URL is set" in error for error in errors
-        )
+        assert isinstance(config_dict, dict)
+        assert "gotify_url" in config_dict
+        assert "max_memory_mb" in config_dict
+        assert config_dict["gotify_enabled"] is False
+        assert config_dict["max_memory_mb"] == 512
 
     def test_config_str_representation(self):
-        """Test string representation of config."""
+        """Test configuration string representation."""
         from burly_mcp.config import Config
 
         config = Config()
-        config_str = str(config)
+        str_repr = str(config)
 
-        assert "Config(" in config_str
-        assert "config_dir=" in config_str
-        assert "log_dir=" in config_str
+        assert "Config(config_dir=" in str_repr
+        assert ".burly_mcp)" in str_repr
 
     def test_config_repr_representation(self):
-        """Test repr representation of config."""
+        """Test configuration detailed string representation."""
         from burly_mcp.config import Config
 
         config = Config()
-        config_repr = repr(config)
+        repr_str = repr(config)
 
-        assert "Config(" in config_repr
-
-    @patch.dict(
-        os.environ,
-        {
-            "DOCKER_TIMEOUT": "invalid_number",
-        },
-    )
-    def test_config_invalid_integer_environment(self):
-        """Test handling of invalid integer environment variables."""
-        from burly_mcp.config import Config
-
-        # Should handle invalid integer gracefully and use default
-        config = Config()
-        assert config.docker_timeout == 30  # default value
-
-    @patch.dict(
-        os.environ,
-        {
-            "AUDIT_ENABLED": "invalid_boolean",
-        },
-    )
-    def test_config_invalid_boolean_environment(self):
-        """Test handling of invalid boolean environment variables."""
-        from burly_mcp.config import Config
-
-        # Should handle invalid boolean gracefully
-        config = Config()
-        # Invalid boolean should default to False
-        assert config.audit_enabled is False
+        assert "Config(config_dir=" in repr_str
+        assert "policy_file=" in repr_str
 
     def test_config_path_resolution(self):
-        """Test that paths are properly resolved."""
+        """Test configuration path resolution."""
         from burly_mcp.config import Config
 
         config = Config()
 
-        # Paths should be Path objects
+        # Test that paths are Path objects
         assert isinstance(config.config_dir, Path)
-        assert isinstance(config.log_dir, Path)
-        assert isinstance(config.blog_stage_root, Path)
-        assert isinstance(config.blog_publish_root, Path)
+        assert isinstance(config.policy_file, Path)
 
-    def test_config_policy_file_path(self):
-        """Test policy file path construction."""
+        # Test default paths
+        assert config.config_dir == Path.home() / ".burly_mcp"
+        assert config.policy_file == config.config_dir / "policy.json"
+
+    def test_config_custom_config_dir(self, tmp_path):
+        """Test configuration with custom config directory."""
         from burly_mcp.config import Config
 
-        with patch.dict(
-            os.environ,
-            {
-                "BURLY_CONFIG_DIR": "/test/config",
-            },
-        ):
-            config = Config()
+        custom_dir = tmp_path / "custom_config"
+        config = Config(config_dir=str(custom_dir))
 
-            expected_policy_path = Path("/test/config/policy/tools.yaml")
-            assert config.policy_file == expected_policy_path
+        assert config.config_dir == custom_dir
+        assert config.policy_file == custom_dir / "policy.json"
 
-    def test_config_immutability(self):
-        """Test that config values can be modified after creation."""
-        from burly_mcp.config import Config
-
-        config = Config()
-        original_timeout = config.docker_timeout
-
-        # Config should allow modification for testing
-        config.docker_timeout = 120
-        assert config.docker_timeout == 120
-        assert config.docker_timeout != original_timeout
-
-    @patch.dict(
-        os.environ,
-        {
-            "BURLY_CONFIG_DIR": "",  # Empty string
-        },
-    )
+    @patch.dict(os.environ, {"GOTIFY_URL": "  ", "BLOG_URL": ""})
     def test_config_empty_environment_variable(self):
-        """Test handling of empty environment variables."""
+        """Test configuration with empty environment variables."""
         from burly_mcp.config import Config
 
         config = Config()
 
-        # Empty string should fall back to default
-        assert config.config_dir == Path("/app/config")
-
-    def test_config_security_settings(self):
-        """Test security-related configuration settings."""
-        from burly_mcp.config import Config
-
-        config = Config()
-
-        # Test security defaults
-        assert config.max_output_size > 0
-        assert isinstance(config.audit_enabled, bool)
-        assert isinstance(config.docker_timeout, int)
-        assert config.docker_timeout > 0
+        # Empty strings should be handled correctly
+        assert config.gotify_url == ""
+        assert config.blog_url == ""

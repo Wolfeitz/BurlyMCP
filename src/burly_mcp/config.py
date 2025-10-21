@@ -82,8 +82,14 @@ class Config:
     
     def __setattr__(self, name: str, value: Any) -> None:
         """Prevent modification of configuration after initialization."""
-        if hasattr(self, '_defaults') and name in self._defaults:
-            raise AttributeError(f"Configuration is immutable: cannot set '{name}'")
+        # Use object.__getattribute__ to avoid triggering __getattr__
+        try:
+            defaults = object.__getattribute__(self, '_defaults')
+            if name in defaults:
+                raise AttributeError(f"Configuration is immutable: cannot set '{name}'")
+        except AttributeError:
+            # _defaults not set yet, allow setting
+            pass
         super().__setattr__(name, value)
     
     def get(self, key: str, default: Any = None) -> Any:
