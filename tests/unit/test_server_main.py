@@ -32,21 +32,24 @@ class TestSetupLogging:
     def test_setup_logging_default_level(self):
         """Test logging setup with default INFO level."""
         with patch.dict(os.environ, {}, clear=True):
-            logger = setup_logging()
-            assert logger.name == "burly_mcp.server.main"
-            assert logging.getLogger().level == logging.INFO
+            with patch("pathlib.Path.mkdir"):
+                logger = setup_logging()
+                assert logger.name == "burly_mcp.server.main"
+                assert logging.getLogger().level == logging.INFO
 
     def test_setup_logging_custom_level(self):
         """Test logging setup with custom DEBUG level."""
         with patch.dict(os.environ, {"LOG_LEVEL": "DEBUG"}):
-            logger = setup_logging()
-            assert logging.getLogger().level == logging.DEBUG
+            with patch("pathlib.Path.mkdir"):
+                logger = setup_logging()
+                assert logging.getLogger().level == logging.DEBUG
 
     def test_setup_logging_invalid_level(self):
         """Test logging setup with invalid level falls back to INFO."""
         with patch.dict(os.environ, {"LOG_LEVEL": "INVALID"}):
-            logger = setup_logging()
-            assert logging.getLogger().level == logging.INFO
+            with patch("pathlib.Path.mkdir"):
+                logger = setup_logging()
+                assert logging.getLogger().level == logging.INFO
 
     def test_setup_logging_custom_log_dir(self):
         """Test logging setup with custom log directory."""
@@ -62,9 +65,10 @@ class TestSetupLogging:
         """Test logging setup handles permission errors gracefully."""
         with patch.dict(os.environ, {"LOG_DIR": "/root/restricted"}):
             with patch("pathlib.Path.mkdir", side_effect=PermissionError("Access denied")):
-                # Should not raise exception, just continue with console logging
-                logger = setup_logging()
-                assert logger.name == "burly_mcp.server.main"
+                with patch("logging.handlers.RotatingFileHandler") as mock_handler:
+                    # Should not raise exception, just continue with console logging
+                    logger = setup_logging()
+                    assert logger.name == "burly_mcp.server.main"
 
     def test_setup_logging_file_handler_error(self):
         """Test logging setup handles file handler creation errors."""
@@ -421,6 +425,14 @@ class TestValidateEnvironment:
 
 class TestMain:
     """Test main function."""
+    
+    def setup_method(self):
+        """Reset global variables before each test."""
+        import sys
+        if 'burly_mcp.server.main' in sys.modules:
+            main_module = sys.modules['burly_mcp.server.main']
+            main_module._mcp_handler = None
+            main_module._logger = None
 
     @patch("burly_mcp.server.main.MCPProtocolHandler")
     @patch("burly_mcp.server.main.ToolRegistry")
@@ -493,12 +505,21 @@ class TestMain:
         mock_logger = Mock()
         mock_setup_logging.return_value = mock_logger
         
-        mock_config = {"test": "config"}
+        mock_config = {
+            "server_name": "test-server",
+            "server_version": "1.0.0",
+            "policy_file": "/test/policy.yaml",
+            "notifications_enabled": True,
+        }
         mock_load_configuration.return_value = mock_config
         
         mock_validate_environment.return_value = False
         
-        main()
+        # Make sys.exit actually raise SystemExit to stop execution
+        mock_exit.side_effect = SystemExit(1)
+        
+        with pytest.raises(SystemExit):
+            main()
         
         mock_logger.critical.assert_called_once_with("Environment validation failed - cannot start server")
         mock_exit.assert_called_once_with(1)
@@ -529,12 +550,16 @@ class TestMain:
             mock_logger.critical.assert_called_once_with("Critical error during startup: Critical error", exc_info=True)
             mock_exit.assert_called_once_with(1)
 
-    @patch("burly_mcp.server.main.setup_logging", side_effect=Exception("Logging failed"))
     @patch("sys.exit")
-    def test_main_logging_failure(self, mock_exit, mock_setup_logging):
+    def test_main_logging_failure(self, mock_exit):
         """Test main function with logging setup failure."""
         with patch("builtins.print") as mock_print:
-            main()
-            
-            mock_print.assert_called_once_with("Critical error during startup: Logging failed", file=sys.stderr)
-            mock_exit.assert_called_once_with(1)
+            with patch("burly_mcp.server.main.setup_logging", side_effect=Exception("Logging failed")):
+                # Make sys.exit actually raise SystemExit to stop execution
+                mock_exit.side_effect = SystemExit(1)
+                
+                with pytest.raises(SystemExit):
+                    main()
+                
+                mock_print.assert_called_once_with("Critical error during startup: Logging failed", file=sys.stderr)
+                mock_exit.assert_called_once_with(1)

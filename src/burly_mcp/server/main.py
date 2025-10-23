@@ -62,7 +62,11 @@ def setup_logging() -> logging.Logger:
     log_dir = os.environ.get("LOG_DIR", "/var/log/agentops")
 
     # Create log directory if it doesn't exist
-    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    try:
+        Path(log_dir).mkdir(parents=True, exist_ok=True)
+    except (OSError, PermissionError) as e:
+        # If we can't create log directory, continue with console only
+        pass
 
     # Configure root logger
     root_logger = logging.getLogger()
