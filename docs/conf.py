@@ -80,12 +80,12 @@ intersphinx_mapping = {
 # MyST parser settings
 myst_enable_extensions = [
     "deflist",
-    "tasklist",
+    "tasklist", 
     "colon_fence",
 ]
 
+# Ensure myst_parser is properly configured
+myst_heading_anchors = 3
+
 # Source file suffixes
-source_suffix = {
-    '.rst': None,
-    '.md': 'myst_parser',
-}
+source_suffix = ['.rst', '.md']
