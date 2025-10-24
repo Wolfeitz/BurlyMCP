@@ -383,7 +383,7 @@ class PolicyLoader:
         if not self._loaded:
             raise RuntimeError("Policy must be loaded before accessing config")
 
-        assert self._config is not None, "Config should be loaded"
+        assert self._config is not None, "Config should be loaded"  # nosec B101
         return self._config
 
     def is_loaded(self) -> bool:

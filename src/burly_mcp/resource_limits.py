@@ -20,7 +20,7 @@ Resource Limits:
 import logging
 import os
 import signal
-import subprocess
+import subprocess  # nosec B404
 import threading
 import time
 from contextlib import contextmanager
@@ -114,7 +114,7 @@ def execute_with_timeout(
 
     try:
         # Start the process
-        process = subprocess.Popen(
+        process = subprocess.Popen(  # nosec B603
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
