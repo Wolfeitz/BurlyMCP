@@ -122,17 +122,7 @@ jobs:
           coverage report --show-missing --format=markdown > coverage-report.md
         else
           echo "No .coverage file found, generating simple report from XML"
-          python3 -c "
-import xml.etree.ElementTree as ET
-tree = ET.parse('coverage.xml')
-root = tree.getroot()
-total_coverage = float(root.get('line-rate', 0)) * 100
-print('| Component | Coverage |')
-print('|-----------|----------|')
-print(f'| **TOTAL** | **{total_coverage:.2f}%** |')
-print('')
-print(f'Coverage: {total_coverage:.2f}% (threshold: 23%)')
-" > coverage-report.md
+          python3 -c 'import xml.etree.ElementTree as ET; tree = ET.parse("coverage.xml"); root = tree.getroot(); total_coverage = float(root.get("line-rate", 0)) * 100; print("| Component | Coverage |"); print("|-----------|----------|"); print(f"| **TOTAL** | **{total_coverage:.2f}%** |"); print(""); print(f"Coverage: {total_coverage:.2f}% (threshold: 23%)")' > coverage-report.md
         fi
         
         echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
