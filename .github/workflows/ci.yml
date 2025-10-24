@@ -199,7 +199,6 @@ jobs:
     - name: Run Bandit security scan
       run: |
         bandit -r src/ -f json -o bandit-report.json || true
-        bandit -r src/ -f sarif -o bandit-results.sarif || true
         bandit -r src/ -f txt
 
     - name: Run pip-audit for dependency vulnerabilities
@@ -222,12 +221,7 @@ jobs:
         severity: 'HIGH,CRITICAL'
         exit-code: '0'  # Don't fail on vulnerabilities, just report
 
-    - name: Upload Bandit SARIF results
-      uses: github/codeql-action/upload-sarif@v3
-      if: always()
-      with:
-        sarif_file: bandit-results.sarif
-        category: bandit
+
 
     - name: Upload Trivy SARIF results
       uses: github/codeql-action/upload-sarif@v3
@@ -243,7 +237,6 @@ jobs:
         name: security-reports
         path: |
           bandit-report.json
-          bandit-results.sarif
           pip-audit-report.json
           safety-report.json
           trivy-fs-results.sarif
@@ -258,7 +251,8 @@ jobs:
         echo "- Safety (dependencies): Completed" >> $GITHUB_STEP_SUMMARY
         echo "- Trivy (filesystem): Completed" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Check the Security tab for detailed SARIF results." >> $GITHUB_STEP_SUMMARY
+        echo "Check the Security tab for detailed Trivy SARIF results." >> $GITHUB_STEP_SUMMARY
+        echo "Download security reports artifact for Bandit, pip-audit, and Safety results." >> $GITHUB_STEP_SUMMARY
 
   ci-summary:
     name: CI Summary
