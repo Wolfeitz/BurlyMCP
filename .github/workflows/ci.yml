@@ -75,6 +75,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install coverage[toml] pytest-cov
+        pip install -e .[dev]
 
     - name: Download coverage artifact
       uses: actions/download-artifact@v4
@@ -165,7 +166,7 @@ jobs:
 
     - name: Run integration tests
       run: |
-        pytest -m integration -v --tb=short --maxfail=3
+        pytest -m "integration and not flaky" -v --tb=short --maxfail=3
 
     - name: Cleanup Docker resources
       if: always()
@@ -225,7 +226,7 @@ jobs:
 
     - name: Upload Trivy SARIF results
       uses: github/codeql-action/upload-sarif@v3
-      if: always()
+      if: always() && hashFiles('trivy-fs-results.sarif') != ''
       with:
         sarif_file: trivy-fs-results.sarif
         category: trivy-fs

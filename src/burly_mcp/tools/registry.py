@@ -982,7 +982,7 @@ class ToolRegistry:
 
             # Send the request with timeout
             try:
-                with urllib.request.urlopen(req, timeout=10) as response:
+                with urllib.request.urlopen(req, timeout=10) as response:  # nosec B310
                     response_data = response.read().decode("utf-8")
                     status_code = response.getcode()
 

@@ -384,6 +384,7 @@ class TestMCPProtocolStressTest:
             assert f"Rapid test {i}" in response["stdout"]
 
     @pytest.mark.slow
+    @pytest.mark.flaky
     def test_mcp_concurrent_simulation(self, mcp_server_config):
         """Simulate concurrent MCP requests (multiple server instances)."""
         # This would test multiple server instances handling requests

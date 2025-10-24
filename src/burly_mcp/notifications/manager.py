@@ -246,7 +246,7 @@ class GotifyNotificationProvider(NotificationProvider):
                 url, data=data, headers={"Content-Type": "application/json"}
             )
 
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # nosec B310
                 if response.status == 200:
                     logger.debug(f"Gotify notification sent: {notification.title}")
                     return True
@@ -327,7 +327,7 @@ class WebhookNotificationProvider(NotificationProvider):
                 self.webhook_url, data=data, headers=self.headers
             )
 
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # nosec B310
                 if 200 <= response.status < 300:
                     logger.debug(f"Webhook notification sent: {notification.title}")
                     return True

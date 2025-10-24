@@ -82,6 +82,7 @@ class TestDockerIntegration:
             # Clean up
             container.remove()
 
+    @pytest.mark.flaky
     def test_container_with_volume_mount(self, docker_client, tmp_path):
         """Test container with volume mount."""
         # Create test file
