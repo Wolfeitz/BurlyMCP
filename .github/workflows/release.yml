@@ -186,20 +186,19 @@ jobs:
           commits=$(git log --pretty=format:"- %s (%h)" --no-merges --max-count=20)
         fi
         
-        # Create changelog content
-        changelog_content="## What's Changed
-
-$commits
-
-**Full Changelog**: https://github.com/${{ github.repository }}/compare/${last_tag}...v${{ needs.version-check.outputs.new_version }}"
+        # Create changelog content using here document
+        cat > RELEASE_CHANGELOG.md << EOF
+        ## What's Changed
         
-        # Save to file and output
-        echo "$changelog_content" > RELEASE_CHANGELOG.md
+        $commits
         
-        # Set output for release notes (escape newlines)
+        **Full Changelog**: https://github.com/${{ github.repository }}/compare/${last_tag}...v${{ needs.version-check.outputs.new_version }}
+        EOF
+        
+        # Set output for release notes
         {
           echo 'changelog<<EOF'
-          echo "$changelog_content"
+          cat RELEASE_CHANGELOG.md
           echo 'EOF'
         } >> $GITHUB_OUTPUT
 

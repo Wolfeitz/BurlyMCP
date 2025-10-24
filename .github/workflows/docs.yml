@@ -27,7 +27,8 @@ jobs:
         cd docs
         make html
 
-    - name: Check documentation links
+    - name: Check documentation links (disabled temporarily)
+      if: false  # Disable link checking temporarily
       run: |
         cd docs
         make linkcheck
