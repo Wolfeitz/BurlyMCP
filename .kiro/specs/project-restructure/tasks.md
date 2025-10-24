@@ -182,67 +182,105 @@
   - Add issue tracking and labeling conventions
   - _Requirements: 6.5, 3.4_
 
-- [ ] 8.2 Create security documentation and threat model
+- [x] 8.2 Fix CI/CD pipeline with deterministic testing strategy
+- [x] 8.2.1 Standardize development and CI dependencies
+  - Create `requirements-dev.txt` with pinned versions for pytest>=8.2, pytest-cov>=5, pytest-mock>=3.14, coverage>=7.6
+  - Update `pyproject.toml` with comprehensive `[project.optional-dependencies].dev` section
+  - Pin Python to 3.12 (with optional 3.11 support) and remove 3.10 compatibility
+  - Add ruff>=0.6, mypy>=1.11, bandit>=1.7 for linting and security
+  - _Requirements: 8.1, 6.2, 6.3_
+
+- [x] 8.2.2 Create deterministic pytest configuration
+  - Create `pytest.ini` with strict configuration: minversion=8.0, coverage reporting, markers for integration tests
+  - Set `--cov-fail-under=35` initially, `--maxfail=1`, `--strict-markers`, and disable warnings
+  - Define `integration` and `slow` markers for test categorization
+  - Configure `testpaths = tests` and proper filterwarnings for deterministic behavior
+  - _Requirements: 8.1, 8.2, 6.2_
+
+- [x] 8.2.3 Implement environment isolation for tests
+  - Create `tests/conftest.py` with `_stable_env` fixture that sets MCP_ENV=test, NO_NETWORK=1, DISABLE_DOCKER=1
+  - Update production code to honor NO_NETWORK and DISABLE_DOCKER environment variables
+  - Ensure unit tests never touch Docker daemon or make network calls
+  - Mark any tests requiring Docker/network with `@pytest.mark.integration`
+  - _Requirements: 8.1, 8.2, 6.2_
+
+- [x] 8.2.4 Create unified local testing command
+  - Create `Makefile` with targets: venv, install, test, test-all, lint, typecheck, security
+  - Ensure `make test` runs identical commands to CI unit tests
+  - Configure local development to match CI exactly: `pytest -m "not integration" --cov=burly_mcp --cov-report=xml --cov-branch`
+  - Add integration test target that runs separately from unit tests
+  - _Requirements: 6.2, 6.3, 8.1_
+
+- [x] 8.2.5 Split CI pipeline into isolated jobs
+  - Replace monolithic CI with separate jobs: unit-tests, coverage-gate, integration-tests, security-scan
+  - Configure unit-tests job with NO_NETWORK=1, DISABLE_DOCKER=1, Python 3.12, pip caching
+  - Set up integration-tests job with Docker-in-Docker service on port 2375
+  - Create security-scan job with Bandit, Trivy filesystem scanning, and SARIF upload
+  - Add coverage-gate job that validates coverage.xml artifact from unit tests
+  - _Requirements: 8.3, 10.3, 6.4_
+
+- [x] 8.3 Create security documentation and threat model
   - Document security architecture and threat model
   - Create security best practices guide
   - Document vulnerability reporting process
   - Add security configuration examples and warnings
   - _Requirements: 10.5, 5.5_
 
-- [ ] 8.3 Create deployment and operational documentation
+- [x] 8.4 Create deployment and operational documentation
   - Write deployment guides for different environments
   - Document configuration options and environment variables
   - Create troubleshooting guides and common issues
   - Add monitoring and logging configuration examples
   - _Requirements: 7.2, 6.5_
 
-- [ ] 9. Set up automated release and distribution
-- [ ] 9.1 Configure automated versioning and tagging
+- [x] 9. Set up automated release and distribution
+- [x] 9.1 Configure automated versioning and tagging
   - Set up semantic versioning with automated version bumping
   - Configure Git tag creation and release notes generation
   - Add version synchronization between Python package and Docker images
   - Create release validation and testing procedures
   - _Requirements: 9.1, 9.3_
 
-- [ ] 9.2 Set up package distribution automation
+- [x] 9.2 Set up package distribution automation
   - Configure automated PyPI package publishing
   - Set up Docker Hub image publishing with proper tagging
   - Add release artifact generation and validation
   - Create distribution testing and validation procedures
   - _Requirements: 9.2, 9.3, 9.5_
 
-- [ ]* 9.3 Create release pipeline validation
+- [x] 9.3 Create release pipeline validation
   - Add automated testing of release artifacts
   - Configure release rollback procedures
   - Set up release monitoring and validation
   - Create post-release verification procedures
   - _Requirements: 9.5_
 
-- [ ] 10. Validate and test complete restructured system
-- [ ] 10.1 Validate package installation and imports
-  - Test package installation in clean environments
-  - Validate all imports work without path manipulation
+- [x] 10. Validate and test complete restructured system
+- [x] 10.1 Fix common CI failure sources (pre-push validation)
+  - Verify package import paths use installed package (`import burly_mcp`) not relative paths
+  - Ensure all `__init__.py` files exist in tests/ and package directories for proper discovery
+  - Mark Docker/network tests with `@pytest.mark.integration` to exclude from unit runs
+  - Stabilize filesystem paths using `pathlib.Path(__file__).parent / "fixtures"` patterns
+  - Set deterministic environment defaults in conftest.py for all tests
+  - _Requirements: 8.1, 8.2, 6.2_
+
+- [x] 10.2 Validate local parity with CI (must be green before pushing)
+  - Test local command: `python -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"`
+  - Run unit tests: `pytest -m "not integration" --cov=burly_mcp --cov-report=xml --cov-branch`
+  - Validate integration tests run separately: `pytest -m integration -q`
+  - Ensure coverage threshold (35% initially) passes locally
+  - _Requirements: 6.2, 8.1, 8.3_
+
+- [x] 10.3 Validate CI pipeline job isolation and success
+  - Verify unit-tests job runs green with NO_NETWORK=1, DISABLE_DOCKER=1
+  - Confirm coverage-gate job validates coverage.xml artifact successfully
+  - Test integration-tests job with Docker-in-Docker service works
+  - Validate security-scan job completes without blocking on warnings
+  - _Requirements: 8.3, 10.3, 6.4_
+
+- [x] 10.4 Validate package installation and Docker deployment
+  - Test package installation in clean environments without path manipulation
+  - Validate Docker builds from project root succeed with new structure
   - Test console script entry points function correctly
-  - Verify package metadata and dependencies are correct
-  - _Requirements: 2.1, 2.2, 4.1_
-
-- [ ] 10.2 Validate Docker build and deployment
-  - Test Docker builds from project root succeed
-  - Validate container security posture and user permissions
-  - Test Docker Compose deployment with secrets management
-  - Verify container functionality and MCP protocol operation
-  - _Requirements: 2.1, 2.2, 7.1, 10.1_
-
-- [ ] 10.3 Validate development workflow and tooling
-  - Test development environment setup from documentation
-  - Validate testing framework runs correctly from project root
-  - Test CI/CD pipeline executes successfully
-  - Verify linting, formatting, and security tools work correctly
-  - _Requirements: 6.2, 6.3, 8.1_
-
-- [ ] 10.4 Validate security implementation and compliance
-  - Test security scanning identifies and blocks vulnerabilities
-  - Validate secret management works correctly
-  - Test path traversal protection and security boundaries
-  - Verify audit logging and security monitoring function
-  - _Requirements: 10.1, 10.3, 10.5_
+  - Verify container security posture and MCP protocol operation
+  - _Requirements: 2.1, 2.2, 4.1, 7.1_

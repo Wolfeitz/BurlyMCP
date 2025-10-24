@@ -2,16 +2,12 @@
 Integration tests for MCP protocol functionality.
 """
 
-import pytest
 import json
+import os
 import subprocess
 import time
-import threading
-import queue
-from pathlib import Path
-from unittest.mock import patch
-import tempfile
-import os
+
+import pytest
 
 
 @pytest.mark.integration

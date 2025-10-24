@@ -5,11 +5,10 @@ This module provides common test fixtures and configuration for both
 unit and integration tests.
 """
 
-import os
 import tempfile
 from pathlib import Path
-from typing import Dict, Any, Generator
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
+
 import pytest
 
 
@@ -23,15 +22,16 @@ def temp_dir():
 @pytest.fixture
 def mock_env_vars():
     """Provide mock environment variables for testing."""
+    test_dir = Path(__file__).parent
     return {
         "LOG_LEVEL": "DEBUG",
-        "LOG_DIR": "/tmp/test_logs",
-        "POLICY_FILE": "tests/fixtures/test_policy.yaml",
-        "BLOG_STAGE_ROOT": "/tmp/test_blog_stage",
-        "BLOG_PUBLISH_ROOT": "/tmp/test_blog_publish",
+        "LOG_DIR": str(test_dir / "fixtures" / "logs"),
+        "POLICY_FILE": str(test_dir / "fixtures" / "test_policy.yaml"),
+        "BLOG_STAGE_ROOT": str(test_dir / "fixtures" / "blog_stage"),
+        "BLOG_PUBLISH_ROOT": str(test_dir / "fixtures" / "blog_publish"),
         "DEFAULT_TIMEOUT_SEC": "10",
         "OUTPUT_TRUNCATE_LIMIT": "1024",
-        "AUDIT_LOG_DIR": "/tmp/test_logs",
+        "AUDIT_LOG_DIR": str(test_dir / "fixtures" / "logs"),
         "NOTIFICATIONS_ENABLED": "false",
         "SERVER_NAME": "test-burly-mcp",
         "SERVER_VERSION": "0.0.1-test",
@@ -219,8 +219,6 @@ config:
 @pytest.fixture
 def test_policy_file():
     """Create temporary policy files for testing."""
-    import tempfile
-    import os
 
     def _create_policy_file(filename: str, content: str):
         # Create file in current directory to avoid path traversal issues
@@ -229,6 +227,46 @@ def test_policy_file():
         return policy_file
 
     return _create_policy_file
+
+
+@pytest.fixture(autouse=True)
+def _stable_env(request, monkeypatch):
+    """
+    Automatically set stable environment variables for all tests.
+    
+    This fixture ensures test isolation by:
+    - Setting MCP_ENV=test for test-specific behavior
+    - Setting NO_NETWORK=1 to disable network calls in unit tests (not integration tests)
+    - Setting DISABLE_DOCKER=1 to disable Docker operations in unit tests (not integration tests)
+    - Setting other test-friendly environment variables
+    """
+    # Core test environment isolation
+    monkeypatch.setenv("MCP_ENV", "test")
+
+    # Check if this is an integration test
+    is_integration_test = (
+        hasattr(request, 'node') and
+        any(mark.name == 'integration' for mark in request.node.iter_markers())
+    )
+
+    # Only disable Docker and network for unit tests, not integration tests
+    if not is_integration_test:
+        monkeypatch.setenv("NO_NETWORK", "1")
+        monkeypatch.setenv("DISABLE_DOCKER", "1")
+
+    # Test-friendly environment variables (apply to all tests)
+    test_dir = Path(__file__).parent
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("LOG_DIR", str(test_dir / "fixtures" / "logs"))
+    monkeypatch.setenv("POLICY_FILE", str(test_dir / "fixtures" / "test_policy.yaml"))
+    monkeypatch.setenv("BLOG_STAGE_ROOT", str(test_dir / "fixtures" / "blog_stage"))
+    monkeypatch.setenv("BLOG_PUBLISH_ROOT", str(test_dir / "fixtures" / "blog_publish"))
+    monkeypatch.setenv("DEFAULT_TIMEOUT_SEC", "10")
+    monkeypatch.setenv("OUTPUT_TRUNCATE_LIMIT", "1024")
+    monkeypatch.setenv("AUDIT_LOG_DIR", str(test_dir / "fixtures" / "logs"))
+    monkeypatch.setenv("NOTIFICATIONS_ENABLED", "false")
+    monkeypatch.setenv("SERVER_NAME", "test-burly-mcp")
+    monkeypatch.setenv("SERVER_VERSION", "0.0.1-test")
 
 
 @pytest.fixture(autouse=True)
@@ -264,10 +302,6 @@ def mock_audit_and_notifications(monkeypatch):
     except (ImportError, AttributeError):
         pass  # Module not available, skip mocking
 
-    # Set test-friendly environment variables
-    monkeypatch.setenv("AUDIT_LOG_DIR", "/tmp/test_logs")
-    monkeypatch.setenv("NOTIFICATIONS_ENABLED", "false")
-
     # Return mocks for tests that need to access them
     return {
         "audit": mock_audit,
@@ -283,18 +317,19 @@ def mock_config_class():
     """Mock the Config class for testing."""
     from unittest.mock import Mock
 
+    test_dir = Path(__file__).parent
     config = Mock()
-    config.config_dir = Path("/tmp/test_config")
-    config.policy_file = Path("/tmp/test_config/policy/tools.yaml")
-    config.log_dir = Path("/tmp/test_logs")
+    config.config_dir = test_dir / "fixtures" / "config"
+    config.policy_file = test_dir / "fixtures" / "config" / "policy" / "tools.yaml"
+    config.log_dir = test_dir / "fixtures" / "logs"
     config.docker_socket = "/var/run/docker.sock"
     config.docker_timeout = 30
     config.max_output_size = 1048576
     config.audit_enabled = True
     config.gotify_url = None
     config.gotify_token = None
-    config.blog_stage_root = Path("/tmp/test_blog_stage")
-    config.blog_publish_root = Path("/tmp/test_blog_publish")
+    config.blog_stage_root = test_dir / "fixtures" / "blog_stage"
+    config.blog_publish_root = test_dir / "fixtures" / "blog_publish"
     config.validate.return_value = []
 
     return config

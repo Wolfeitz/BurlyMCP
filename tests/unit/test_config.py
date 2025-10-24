@@ -2,10 +2,11 @@
 Unit tests for the Burly MCP configuration module.
 """
 
-import pytest
-from unittest.mock import patch
-from pathlib import Path
 import os
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 
 class TestConfig:
@@ -159,11 +160,11 @@ class TestConfig:
         # The current implementation allows setting new attributes but prevents
         # modification of existing configuration values in _defaults
         # This test verifies the actual behavior
-        
+
         # Test that we can set new attributes (not in _defaults)
         config.new_attribute = "allowed"
         assert config.new_attribute == "allowed"
-        
+
         # Test that configuration values are accessible
         assert hasattr(config, "gotify_url")
         assert hasattr(config, "max_memory_mb")

@@ -6,11 +6,11 @@ sending notifications via various providers like Gotify.
 """
 
 from .manager import (
+    NotificationManager,
     get_notification_manager,
     notify_tool_confirmation,
     notify_tool_failure,
     notify_tool_success,
-    NotificationManager,
 )
 
 __all__ = [

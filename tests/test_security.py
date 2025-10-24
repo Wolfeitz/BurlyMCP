@@ -14,32 +14,29 @@ Test Categories:
 """
 
 import os
-import pytest
 import subprocess
-import tempfile
 import time
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
-from server.security import (
+import pytest
+
+from burly_mcp.resource_limits import (
+    execute_with_timeout,
+    get_output_limit,
+    get_tool_timeout,
+    truncate_output,
+)
+from burly_mcp.security import (
     SecurityViolationError,
-    validate_path_within_root,
-    sanitize_file_path,
-    validate_blog_stage_path,
-    validate_blog_publish_path,
-    log_security_violation,
     check_file_permissions,
     get_safe_file_info,
+    log_security_violation,
+    sanitize_file_path,
+    validate_blog_publish_path,
+    validate_blog_stage_path,
+    validate_path_within_root,
 )
-from server.resource_limits import (
-    execute_with_timeout,
-    truncate_output,
-    TimeoutError,
-    ResourceLimitExceededError,
-    get_tool_timeout,
-    get_output_limit,
-)
-from server.tools import ToolRegistry
+from burly_mcp.tools.registry import ToolRegistry
 
 
 class TestPathTraversalPrevention:
@@ -64,7 +61,7 @@ class TestPathTraversalPrevention:
                 os.path.join(root_dir, safe_path)
             )
 
-    @patch("server.audit.get_audit_logger")
+    @patch("burly_mcp.audit.get_audit_logger")
     def test_validate_path_within_root_traversal_attacks(
         self, mock_audit_logger, temp_dir
     ):
@@ -90,7 +87,7 @@ class TestPathTraversalPrevention:
             with pytest.raises(SecurityViolationError, match="Path traversal detected"):
                 validate_path_within_root(attack_path, root_dir, "test_operation")
 
-    @patch("server.audit.get_audit_logger")
+    @patch("burly_mcp.audit.get_audit_logger")
     def test_validate_path_within_root_symbolic_links(
         self, mock_audit_logger, temp_dir
     ):
@@ -160,7 +157,7 @@ class TestPathTraversalPrevention:
         with pytest.raises(ValueError, match="File path too long"):
             sanitize_file_path(long_path)
 
-    @patch("server.audit.get_audit_logger")
+    @patch("burly_mcp.audit.get_audit_logger")
     def test_blog_path_validation_functions(
         self, mock_audit_logger, monkeypatch, temp_dir
     ):
@@ -209,7 +206,7 @@ class TestPathTraversalPrevention:
         ):
             validate_blog_publish_path("post.md")
 
-    @patch("server.audit.get_audit_logger")
+    @patch("burly_mcp.audit.get_audit_logger")
     def test_security_violation_logging(self, mock_audit_logger, caplog):
         """Test that security violations are properly logged."""
         # Mock audit logger to avoid permission issues
@@ -229,8 +226,8 @@ class TestPathTraversalPrevention:
         assert "path_traversal" in caplog.text
         assert "test_operation" in caplog.text
 
-    @patch("server.audit.get_audit_logger")
-    @patch("server.security.logger")
+    @patch("burly_mcp.audit.get_audit_logger")
+    @patch("burly_mcp.security.logger")
     def test_path_validation_with_os_errors(
         self, mock_logger, mock_audit_logger, temp_dir
     ):
@@ -485,7 +482,7 @@ class TestResourceLimitEnforcement:
 class TestToolSecurityIntegration:
     """Test security features integrated with tool execution."""
 
-    @patch("server.audit.get_audit_logger")
+    @patch("burly_mcp.audit.get_audit_logger")
     def test_tool_registry_path_traversal_protection(
         self, mock_audit_logger, temp_dir, monkeypatch
     ):
@@ -513,7 +510,7 @@ class TestToolSecurityIntegration:
         assert "Path traversal detected" in result.summary
         assert result.exit_code == 1
 
-    @patch("server.audit.get_audit_logger")
+    @patch("burly_mcp.audit.get_audit_logger")
     def test_tool_registry_timeout_enforcement(self, mock_audit_logger):
         """Test that tool registry enforces timeouts."""
         # Mock audit logger to avoid permission issues
@@ -526,7 +523,7 @@ class TestToolSecurityIntegration:
             # Simulate a long-running operation
             def slow_operation(args):
                 # Don't actually sleep in the test, just return a result that looks like it took time
-                from server.tools import ToolResult
+                from burly_mcp.tools.registry import ToolResult
 
                 return ToolResult(
                     success=True,
@@ -549,7 +546,7 @@ class TestToolSecurityIntegration:
             assert result.elapsed_ms > 0
             assert result.success is True
 
-    @patch("server.audit.get_audit_logger")
+    @patch("burly_mcp.audit.get_audit_logger")
     def test_tool_registry_output_truncation_integration(self, mock_audit_logger):
         """Test that tool registry handles output truncation properly."""
         # Mock audit logger to avoid permission issues
@@ -558,8 +555,8 @@ class TestToolSecurityIntegration:
         registry = ToolRegistry()
 
         # Mock execute_with_timeout to return truncated output
-        with patch("server.tools.execute_with_timeout") as mock_execute:
-            from server.resource_limits import ExecutionResult
+        with patch("burly_mcp.resource_limits.execute_with_timeout") as mock_execute:
+            from burly_mcp.resource_limits import ExecutionResult
 
             mock_execute.return_value = ExecutionResult(
                 success=True,
@@ -580,7 +577,7 @@ class TestToolSecurityIntegration:
             assert "output truncated" in result.summary
             assert result.data["output_truncated"] is True
 
-    @patch("server.audit.get_audit_logger")
+    @patch("burly_mcp.audit.get_audit_logger")
     def test_security_violation_audit_logging(self, mock_audit_logger, caplog):
         """Test that security violations are properly audited."""
         # Mock audit logger to avoid permission issues
@@ -598,8 +595,8 @@ class TestToolSecurityIntegration:
         assert result.success is False
         # The actual audit logging would be tested in the audit module tests
 
-    @patch("server.audit.get_audit_logger")
-    @patch("server.security.log_security_violation")
+    @patch("burly_mcp.audit.get_audit_logger")
+    @patch("burly_mcp.security.log_security_violation")
     def test_security_violation_notification(
         self, mock_log_violation, mock_audit_logger, temp_dir, monkeypatch
     ):
@@ -658,13 +655,12 @@ class TestSecurityEdgeCases:
         with pytest.raises(ValueError, match="File path too long"):
             sanitize_file_path(extremely_long_path)
 
-    @patch("server.audit.get_audit_logger")
+    @patch("burly_mcp.audit.get_audit_logger")
     def test_concurrent_security_operations(self, mock_audit_logger, temp_dir):
         """Test security operations under concurrent access."""
         # Mock audit logger to avoid permission issues
         mock_audit_logger.return_value = Mock()
 
-        import threading
         import concurrent.futures
 
         root_dir = str(temp_dir)

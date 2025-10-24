@@ -2,8 +2,9 @@
 Test to verify the testing framework is working correctly.
 """
 
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 
 
 class TestFrameworkVerification:

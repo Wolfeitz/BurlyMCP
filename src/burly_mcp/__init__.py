@@ -10,10 +10,10 @@ __author__ = "Burly MCP Team"
 __description__ = "Secure MCP server for system operations"
 
 # Import main components for public API
+from .notifications import NotificationManager
+from .policy import PolicyLoader, PolicyToolRegistry, SchemaValidator
 from .server.main import main
 from .tools import ToolRegistry
-from .policy import PolicyLoader, SchemaValidator, PolicyToolRegistry
-from .notifications import NotificationManager
 
 # Define public API exports
 __all__ = [

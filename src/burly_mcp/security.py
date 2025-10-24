@@ -22,13 +22,8 @@ import os
 import re
 import shlex
 import stat
-from typing import Any, Dict, List, Optional
-import os
-import re
-import shlex
-import stat
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -218,8 +213,8 @@ def log_security_violation(
     operation: str,
     attempted_path: str,
     root_directory: str,
-    resolved_path: Optional[str] = None,
-    error: Optional[str] = None,
+    resolved_path: str | None = None,
+    error: str | None = None,
 ) -> None:
     """
     Log a security violation for audit purposes.
@@ -298,7 +293,7 @@ def check_file_permissions(file_path: str, required_permissions: str = "r") -> b
         return False
 
 
-def get_safe_file_info(file_path: str) -> Dict[str, Any]:
+def get_safe_file_info(file_path: str) -> dict[str, Any]:
     """
     Get safe file information without exposing sensitive system details.
 
@@ -329,7 +324,7 @@ def get_safe_file_info(file_path: str) -> Dict[str, Any]:
         }
 
 
-def log_security_event(event_type: str, details: Dict[str, Any]) -> None:
+def log_security_event(event_type: str, details: dict[str, Any]) -> None:
     """Log a security event (compatibility function for tests).
     
     Args:
@@ -343,8 +338,8 @@ def log_security_event(event_type: str, details: Dict[str, Any]) -> None:
 
 class SecurityValidator:
     """Security validator for comprehensive security checks."""
-    
-    def __init__(self, allowed_paths: Optional[List[str]] = None):
+
+    def __init__(self, allowed_paths: list[str] | None = None):
         """Initialize security validator.
         
         Args:
@@ -359,7 +354,7 @@ class SecurityValidator:
         self.dangerous_env_vars = {
             "PATH", "LD_LIBRARY_PATH", "PYTHONPATH", "HOME", "USER", "SHELL"
         }
-    
+
     def validate_path(self, path, root_dir: str = "/") -> bool:
         """Validate if a path is allowed.
         
@@ -370,12 +365,11 @@ class SecurityValidator:
         Returns:
             bool: True if path is valid
         """
-        from pathlib import Path
-        
+
         # Convert to Path object if needed
         if isinstance(path, str):
             path = Path(path)
-        
+
         # Check if path is in allowed_paths
         if self.allowed_paths:
             for allowed_path in self.allowed_paths:
@@ -388,15 +382,15 @@ class SecurityValidator:
                 except ValueError:
                     continue
             return False
-        
+
         # Fallback to root directory validation
         try:
             validated_path = validate_path_within_root(str(path), root_dir)
             return True
         except (SecurityViolationError, ValueError):
             return False
-    
-    def sanitize_command_args(self, args: List[str]) -> List[str]:
+
+    def sanitize_command_args(self, args: list[str]) -> list[str]:
         """Sanitize command arguments.
         
         Args:
@@ -410,21 +404,21 @@ class SecurityValidator:
         """
         if not args:
             return []
-        
+
         # Check for dangerous commands
         command = args[0].lower()
         if command in self.dangerous_commands:
             raise ValueError(f"Dangerous command detected: {command}")
-        
+
         # Sanitize each argument
         sanitized = []
         for arg in args:
             # Remove null bytes and control characters
             clean_arg = arg.replace('\x00', '').replace('\r', '').replace('\n', '')
             sanitized.append(clean_arg)
-        
+
         return sanitized
-    
+
     def validate_docker_image_name(self, image_name: str) -> bool:
         """Validate Docker image name format.
         
@@ -436,23 +430,23 @@ class SecurityValidator:
         """
         if not image_name:
             return False
-        
+
         # Basic Docker image name validation
         # Allow: alphanumeric, hyphens, underscores, dots, colons, slashes
         # More permissive pattern to allow common Docker image names
         pattern = r'^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$'
-        
+
         if not re.match(pattern, image_name):
             return False
-        
+
         # Check for dangerous patterns
         dangerous_patterns = ['..', '//', '\\', '${', '$(', '`']
         for pattern in dangerous_patterns:
             if pattern in image_name:
                 return False
-        
+
         return True
-    
+
     def check_resource_limits(self, memory_mb: int = 512, cpu_percent: int = 80) -> bool:
         """Check if resource limits are reasonable.
         
@@ -466,13 +460,13 @@ class SecurityValidator:
         # Basic sanity checks
         if memory_mb < 1 or memory_mb > 16384:  # 1MB to 16GB
             return False
-        
+
         if cpu_percent < 1 or cpu_percent > 100:
             return False
-        
+
         return True
-    
-    def validate_environment_variables(self, env_vars: Dict[str, str]) -> bool:
+
+    def validate_environment_variables(self, env_vars: dict[str, str]) -> bool:
         """Validate environment variables for safety.
         
         Args:
@@ -489,14 +483,14 @@ class SecurityValidator:
             dangerous_vars = {"LD_PRELOAD", "LD_LIBRARY_PATH"}
             if key in dangerous_vars:
                 raise ValueError(f"Dangerous environment variable: {key}")
-            
+
             # Check for injection patterns in values
             if any(pattern in value for pattern in ['$(', '${', '`', ';', '|', '&']):
                 return False
-        
+
         return True
-    
-    def audit_security_event(self, event_type: str, details: Dict[str, Any]) -> None:
+
+    def audit_security_event(self, event_type: str, details: dict[str, Any]) -> None:
         """Audit a security event.
         
         Args:
@@ -511,7 +505,7 @@ class SecurityValidator:
             resolved_path=details.get('resolved_path'),
             error=details.get('error')
         )
-    
+
     def generate_security_token(self, length: int = 32) -> str:
         """Generate a secure random token.
         
@@ -523,10 +517,10 @@ class SecurityValidator:
         """
         import secrets
         import string
-        
+
         alphabet = string.ascii_letters + string.digits
         return ''.join(secrets.choice(alphabet) for _ in range(length))
-    
+
     def validate_file_permissions(self, file_path: str, max_permissions: int = 0o644) -> bool:
         """Validate file permissions are not too permissive.
         
@@ -543,7 +537,7 @@ class SecurityValidator:
             return file_permissions <= max_permissions
         except OSError:
             return False
-    
+
     def validate_user_privileges(self) -> bool:
         """Check if running with appropriate user privileges.
         
@@ -552,7 +546,7 @@ class SecurityValidator:
         """
         # Should not be running as root
         return os.getuid() != 0 if hasattr(os, 'getuid') else True
-    
+
     def escape_shell_argument(self, arg: str) -> str:
         """Escape a shell argument safely.
         
@@ -563,7 +557,7 @@ class SecurityValidator:
             str: Safely escaped argument
         """
         return shlex.quote(arg)
-    
+
     def validate_network_access(self, url_or_host: str, port: int = None) -> bool:
         """Validate network access parameters.
         
@@ -585,22 +579,22 @@ class SecurityValidator:
             host = url_or_host
             if port is None:
                 port = 80  # Default port
-        
+
         # Block localhost and private networks for external access
         if host and host.lower() in ['localhost', '127.0.0.1', '::1']:
             return False
-        
+
         # Block private IP ranges (basic check)
         if host and host.startswith(('10.', '172.', '192.168.')):
             return False
-        
+
         # Validate port range
         if port < 1 or port > 65535:
             return False
-        
+
         # Allow common web ports for external access
         return True
-    
+
     def check_rate_limits(self, operation: str, max_per_minute: int = 60) -> bool:
         """Check if operation is within rate limits.
         
@@ -613,7 +607,7 @@ class SecurityValidator:
         """
         # Simple implementation - in production would use Redis or similar
         import time
-        
+
         current_time = time.time()
         # For now, just return True - would implement proper rate limiting
         return True

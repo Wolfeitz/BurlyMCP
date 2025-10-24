@@ -25,7 +25,7 @@ import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 try:
     import psutil
@@ -70,11 +70,11 @@ class ResourceLimitExceededError(Exception):
 
 
 def execute_with_timeout(
-    command: List[str],
+    command: list[str],
     timeout_seconds: int = 30,
     max_output_size: int = 1024 * 1024,  # 1MB default
-    cwd: Optional[str] = None,
-    env: Optional[Dict[str, str]] = None,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> ExecutionResult:
     """
     Execute a command with timeout and output size limits.
@@ -190,7 +190,7 @@ def execute_with_timeout(
             original_stderr_size=original_stderr_size,
         )
 
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         elapsed_ms = int((time.time() - start_time) * 1000)
         logger.error(f"Command not found: {command[0]}")
         return ExecutionResult(
@@ -206,7 +206,7 @@ def execute_with_timeout(
             original_stderr_size=0,
         )
 
-    except PermissionError as e:
+    except PermissionError:
         elapsed_ms = int((time.time() - start_time) * 1000)
         logger.error(f"Permission denied executing command: {command[0]}")
         return ExecutionResult(
@@ -369,7 +369,7 @@ def get_output_limit(tool_name: str, default_limit: int = 1024 * 1024) -> int:
 
 class ResourceLimiter:
     """Resource limiter for monitoring and enforcing resource constraints."""
-    
+
     def __init__(self, max_memory_mb: int = 512, max_cpu_percent: int = 80, max_execution_time: int = 300):
         """Initialize resource limiter.
         
@@ -383,8 +383,8 @@ class ResourceLimiter:
         self.max_execution_time = max_execution_time
         self.monitoring_active = False
         self.resource_history = []
-    
-    def check_memory_usage(self, pid: Optional[int] = None) -> bool:
+
+    def check_memory_usage(self, pid: int | None = None) -> bool:
         """Check if memory usage is within limits.
         
         Args:
@@ -395,15 +395,15 @@ class ResourceLimiter:
         """
         if not PSUTIL_AVAILABLE:
             return True
-        
+
         try:
             process = psutil.Process(pid) if pid else psutil.Process()
             memory_mb = process.memory_info().rss / (1024 * 1024)
             return memory_mb <= self.max_memory_mb
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return True
-    
-    def check_cpu_usage(self, pid: Optional[int] = None) -> bool:
+
+    def check_cpu_usage(self, pid: int | None = None) -> bool:
         """Check if CPU usage is within limits.
         
         Args:
@@ -414,14 +414,14 @@ class ResourceLimiter:
         """
         if not PSUTIL_AVAILABLE:
             return True
-        
+
         try:
             process = psutil.Process(pid) if pid else psutil.Process()
             cpu_percent = process.cpu_percent(interval=0.1)
             return cpu_percent <= self.max_cpu_percent
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return True
-    
+
     def check_execution_time(self, start_time: float) -> bool:
         """Check if execution time is within limits.
         
@@ -433,8 +433,8 @@ class ResourceLimiter:
         """
         elapsed = time.time() - start_time
         return elapsed <= self.max_execution_time
-    
-    def monitor_process(self, pid: int, duration: float = 1.0) -> Dict[str, Any]:
+
+    def monitor_process(self, pid: int, duration: float = 1.0) -> dict[str, Any]:
         """Monitor a process for resource usage.
         
         Args:
@@ -446,27 +446,27 @@ class ResourceLimiter:
         """
         if not PSUTIL_AVAILABLE:
             return {"error": "psutil not available"}
-        
+
         try:
             process = psutil.Process(pid)
             start_time = time.time()
-            
+
             # Monitor for specified duration
             memory_samples = []
             cpu_samples = []
-            
+
             while time.time() - start_time < duration:
                 try:
                     memory_mb = process.memory_info().rss / (1024 * 1024)
                     cpu_percent = process.cpu_percent(interval=0.1)
-                    
+
                     memory_samples.append(memory_mb)
                     cpu_samples.append(cpu_percent)
-                    
+
                     time.sleep(0.1)
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     break
-            
+
             return {
                 "memory_mb": {
                     "current": memory_samples[-1] if memory_samples else 0,
@@ -485,7 +485,7 @@ class ResourceLimiter:
             }
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return {"error": "Process not accessible"}
-    
+
     def terminate_process(self, pid: int, force: bool = False) -> bool:
         """Terminate a process that exceeds resource limits.
         
@@ -498,10 +498,10 @@ class ResourceLimiter:
         """
         if not PSUTIL_AVAILABLE:
             return False
-        
+
         try:
             process = psutil.Process(pid)
-            
+
             if force:
                 process.kill()
             else:
@@ -511,12 +511,12 @@ class ResourceLimiter:
                     process.wait(timeout=5)
                 except psutil.TimeoutExpired:
                     process.kill()
-            
+
             return True
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             return False
-    
-    def get_process_stats(self, pid: int) -> Dict[str, Any]:
+
+    def get_process_stats(self, pid: int) -> dict[str, Any]:
         """Get detailed process statistics.
         
         Args:
@@ -527,10 +527,10 @@ class ResourceLimiter:
         """
         if not PSUTIL_AVAILABLE:
             return {"error": "psutil not available"}
-        
+
         try:
             process = psutil.Process(pid)
-            
+
             return {
                 "pid": pid,
                 "name": process.name(),
@@ -542,7 +542,7 @@ class ResourceLimiter:
             }
         except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
             return {"error": str(e)}
-    
+
     @contextmanager
     def resource_monitor_context(self, check_interval: float = 1.0):
         """Context manager for resource monitoring.
@@ -552,39 +552,39 @@ class ResourceLimiter:
         """
         self.monitoring_active = True
         start_time = time.time()
-        
+
         def monitor_loop():
             while self.monitoring_active:
                 if not self.check_memory_usage():
                     logger.warning("Memory limit exceeded")
-                
+
                 if not self.check_cpu_usage():
                     logger.warning("CPU limit exceeded")
-                
+
                 if not self.check_execution_time(start_time):
                     logger.warning("Execution time limit exceeded")
                     break
-                
+
                 time.sleep(check_interval)
-        
+
         monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
         monitor_thread.start()
-        
+
         try:
             yield self
         finally:
             self.monitoring_active = False
             monitor_thread.join(timeout=1.0)
-    
-    def get_resource_usage_history(self) -> List[Dict[str, Any]]:
+
+    def get_resource_usage_history(self) -> list[dict[str, Any]]:
         """Get resource usage history.
         
         Returns:
             List[Dict[str, Any]]: Resource usage history
         """
         return self.resource_history.copy()
-    
-    def get_resource_usage_statistics(self) -> Dict[str, Any]:
+
+    def get_resource_usage_statistics(self) -> dict[str, Any]:
         """Get resource usage statistics.
         
         Returns:
@@ -592,10 +592,10 @@ class ResourceLimiter:
         """
         if not self.resource_history:
             return {"error": "No resource usage data available"}
-        
+
         memory_values = [entry.get("memory_mb", 0) for entry in self.resource_history]
         cpu_values = [entry.get("cpu_percent", 0) for entry in self.resource_history]
-        
+
         return {
             "memory_mb": {
                 "min": min(memory_values) if memory_values else 0,
@@ -621,7 +621,7 @@ class ResourceMonitor:
     """
 
     def __init__(self) -> None:
-        self.start_time: Optional[float] = None
+        self.start_time: float | None = None
         self.peak_memory = 0
         self.cpu_time = 0
 
@@ -635,7 +635,7 @@ class ResourceMonitor:
         # - File descriptor count
         # - Network connections
 
-    def stop_monitoring(self) -> Dict[str, Any]:
+    def stop_monitoring(self) -> dict[str, Any]:
         """
         Stop monitoring and return resource usage metrics.
 

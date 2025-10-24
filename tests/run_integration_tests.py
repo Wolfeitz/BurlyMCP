@@ -7,10 +7,9 @@ with proper setup and configuration.
 """
 
 import argparse
+import os
 import subprocess
 import sys
-import os
-from pathlib import Path
 
 
 def check_prerequisites():

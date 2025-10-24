@@ -16,17 +16,14 @@ Test Coverage:
 
 import json
 import os
-import tempfile
 import time
-from io import StringIO
-from pathlib import Path
-from typing import Any, Dict, List, Optional
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
 import pytest
 
-from server.mcp import MCPProtocolHandler, MCPRequest, MCPResponse
-from server.tools import ToolRegistry
-from server.resource_limits import ExecutionResult
+from burly_mcp.server.mcp import MCPProtocolHandler, MCPRequest, MCPResponse
+from burly_mcp.resource_limits import ExecutionResult
+from burly_mcp.tools import ToolRegistry
 
 
 class TestMCPProtocolEndToEnd:
@@ -38,10 +35,10 @@ class TestMCPProtocolEndToEnd:
         self.mcp_handler = MCPProtocolHandler(tool_registry=self.tool_registry)
 
         # Patch audit and notification systems for all tests
-        self.audit_patcher = patch("server.tools.log_tool_execution")
-        self.notify_success_patcher = patch("server.tools.notify_tool_success")
-        self.notify_failure_patcher = patch("server.tools.notify_tool_failure")
-        self.notify_confirm_patcher = patch("server.tools.notify_tool_confirmation")
+        self.audit_patcher = patch("burly_mcp.tools.registry.log_tool_execution")
+        self.notify_success_patcher = patch("burly_mcp.tools.registry.notify_tool_success")
+        self.notify_failure_patcher = patch("burly_mcp.tools.registry.notify_tool_failure")
+        self.notify_confirm_patcher = patch("burly_mcp.tools.registry.notify_tool_confirmation")
 
         self.mock_audit = self.audit_patcher.start()
         self.mock_notify_success = self.notify_success_patcher.start()
@@ -153,7 +150,8 @@ class TestMCPProtocolEndToEnd:
                 json_response = response.to_json()
                 assert json_response["ok"] is False
 
-    @patch("server.tools.execute_with_timeout")
+    @pytest.mark.integration
+    @patch("burly_mcp.resource_limits.execute_with_timeout")
     def test_docker_ps_complete_mcp_cycle(self, mock_execute):
         """Test complete MCP cycle for docker_ps tool."""
         # Mock successful docker ps output
@@ -199,7 +197,7 @@ abc123def456	nginx:latest	"/docker-entrypoint.…"	2 hours ago	Up 2 hours	0.0.0.
         assert container["image"] == "nginx:latest"
         assert container["names"] == "web-server"
 
-    @patch("server.tools.execute_with_timeout")
+    @patch("burly_mcp.resource_limits.execute_with_timeout")
     def test_disk_space_complete_mcp_cycle(self, mock_execute):
         """Test complete MCP cycle for disk_space tool."""
         # Mock successful df output
@@ -356,6 +354,7 @@ This is a test blog post with valid front-matter.
             assert (publish_dir / "post1.md").exists()
             assert (publish_dir / "post2.md").exists()
 
+    @pytest.mark.integration
     @patch("urllib.request.urlopen")
     def test_gotify_ping_complete_mcp_cycle(self, mock_urlopen):
         """Test complete MCP cycle for gotify_ping tool."""

@@ -1,16 +1,16 @@
-name: Coverage Validation
+name: Legacy Coverage Validation (Deprecated)
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only
     inputs:
       min_coverage:
         description: 'Minimum coverage threshold'
         required: false
         default: '80'
+        type: string
+      reason:
+        description: 'Reason for running legacy coverage validation'
+        required: true
         type: string
 
 env:

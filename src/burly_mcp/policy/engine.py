@@ -8,7 +8,7 @@ arguments are validated against their defined schemas.
 
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import jsonschema
 import yaml
@@ -38,12 +38,12 @@ class ToolDefinition:
 
     name: str
     description: str
-    args_schema: Dict[str, Any]
-    command: List[str]
+    args_schema: dict[str, Any]
+    command: list[str]
     mutates: bool
     requires_confirm: bool
     timeout_sec: int
-    notify: List[str]
+    notify: list[str]
 
 
 @dataclass
@@ -55,7 +55,7 @@ class PolicyConfig:
     audit_log_path: str
     blog_stage_root: str
     blog_publish_root: str
-    allowed_blog_extensions: List[str]
+    allowed_blog_extensions: list[str]
 
 
 class PolicyLoader:
@@ -77,8 +77,8 @@ class PolicyLoader:
             policy_file_path: Path to the YAML policy file
         """
         self.policy_file_path = policy_file_path
-        self._tools: Dict[str, ToolDefinition] = {}
-        self._config: Optional[PolicyConfig] = None
+        self._tools: dict[str, ToolDefinition] = {}
+        self._config: PolicyConfig | None = None
         self._loaded = False
 
     def load_policy(self) -> None:
@@ -120,7 +120,7 @@ class PolicyLoader:
             if file_size > 1024 * 1024:  # 1MB limit
                 raise PolicyLoadError("Policy file exceeds maximum size limit")
 
-            with open(self.policy_file_path, "r", encoding="utf-8") as f:
+            with open(self.policy_file_path, encoding="utf-8") as f:
                 content = f.read(1024 * 1024)  # Additional read limit
                 try:
                     # Use safe_load with custom loader to prevent YAML bombs
@@ -141,12 +141,12 @@ class PolicyLoader:
 
             self._loaded = True
 
-        except (OSError, IOError):
+        except OSError:
             raise PolicyLoadError(
                 "Failed to read policy file: access denied or file not found"
             )
 
-    def _validate_policy_structure(self, policy_data: Dict[str, Any]) -> None:
+    def _validate_policy_structure(self, policy_data: dict[str, Any]) -> None:
         """
         Validate the overall structure of the policy file.
 
@@ -169,7 +169,7 @@ class PolicyLoader:
         if "config" in policy_data and not isinstance(policy_data["config"], dict):
             raise PolicyValidationError("'config' section must be an object")
 
-    def _load_tools(self, tools_data: Dict[str, Any]) -> None:
+    def _load_tools(self, tools_data: dict[str, Any]) -> None:
         """
         Load and validate tool definitions.
 
@@ -209,7 +209,7 @@ class PolicyLoader:
                 )
 
     def _validate_tool_definition(
-        self, tool_name: str, tool_config: Dict[str, Any]
+        self, tool_name: str, tool_config: dict[str, Any]
     ) -> None:
         """
         Validate a single tool definition.
@@ -291,7 +291,7 @@ class PolicyLoader:
                         f"Valid types: {valid_notify_types}"
                     )
 
-    def _load_config(self, config_data: Dict[str, Any]) -> None:
+    def _load_config(self, config_data: dict[str, Any]) -> None:
         """
         Load global configuration settings.
 
@@ -309,7 +309,7 @@ class PolicyLoader:
         }
 
         # Override with values from config file
-        config_values: Dict[str, Any] = defaults.copy()
+        config_values: dict[str, Any] = defaults.copy()
         config_values.update(config_data)
 
         # Handle nested security config
@@ -337,7 +337,7 @@ class PolicyLoader:
             ],
         )
 
-    def get_tool_definition(self, tool_name: str) -> Optional[ToolDefinition]:
+    def get_tool_definition(self, tool_name: str) -> ToolDefinition | None:
         """
         Get tool definition by name.
 
@@ -355,7 +355,7 @@ class PolicyLoader:
 
         return self._tools.get(tool_name)
 
-    def get_all_tools(self) -> Dict[str, ToolDefinition]:
+    def get_all_tools(self) -> dict[str, ToolDefinition]:
         """
         Get all tool definitions.
 
@@ -411,7 +411,7 @@ class SchemaValidator:
         self._validator_class = jsonschema.Draft202012Validator
 
     def validate_args(
-        self, args: Dict[str, Any], schema: Dict[str, Any], tool_name: str
+        self, args: dict[str, Any], schema: dict[str, Any], tool_name: str
     ) -> None:
         """
         Validate tool arguments against a JSON schema.
@@ -517,7 +517,7 @@ class SchemaValidator:
                 f"Tool '{tool_name}' validation error: {str(e)}"
             )
 
-    def validate_schema(self, schema: Dict[str, Any], tool_name: str) -> None:
+    def validate_schema(self, schema: dict[str, Any], tool_name: str) -> None:
         """
         Validate that a JSON schema is well-formed.
 
@@ -541,7 +541,7 @@ class SchemaValidator:
             )
 
     def _validate_schema_complexity(
-        self, schema: Dict[str, Any], tool_name: str
+        self, schema: dict[str, Any], tool_name: str
     ) -> None:
         """
         Validate schema complexity to prevent resource exhaustion.
@@ -583,8 +583,8 @@ class SchemaValidator:
             raise SchemaValidationError(f"Tool '{tool_name}' schema too complex")
 
     def get_schema_errors(
-        self, args: Dict[str, Any], schema: Dict[str, Any]
-    ) -> List[str]:
+        self, args: dict[str, Any], schema: dict[str, Any]
+    ) -> list[str]:
         """
         Get list of validation errors without raising an exception.
 
@@ -633,7 +633,7 @@ class ToolRegistry:
         """
         self.policy_loader = policy_loader
         self.schema_validator = schema_validator
-        self._tools: Dict[str, ToolDefinition] = {}
+        self._tools: dict[str, ToolDefinition] = {}
         self._initialized = False
 
     def initialize(self) -> None:
@@ -672,7 +672,7 @@ class ToolRegistry:
         """
         return self._initialized
 
-    def get_tool(self, tool_name: str) -> Optional[ToolDefinition]:
+    def get_tool(self, tool_name: str) -> ToolDefinition | None:
         """
         Get tool definition by name.
 
@@ -708,7 +708,7 @@ class ToolRegistry:
 
         return tool_name in self._tools
 
-    def get_all_tool_names(self) -> List[str]:
+    def get_all_tool_names(self) -> list[str]:
         """
         Get list of all available tool names.
 
@@ -723,7 +723,7 @@ class ToolRegistry:
 
         return list(self._tools.keys())
 
-    def get_all_tools(self) -> Dict[str, ToolDefinition]:
+    def get_all_tools(self) -> dict[str, ToolDefinition]:
         """
         Get all tool definitions.
 
@@ -738,7 +738,7 @@ class ToolRegistry:
 
         return self._tools.copy()
 
-    def validate_tool_args(self, tool_name: str, args: Dict[str, Any]) -> None:
+    def validate_tool_args(self, tool_name: str, args: dict[str, Any]) -> None:
         """
         Validate arguments for a specific tool.
 
@@ -762,7 +762,7 @@ class ToolRegistry:
 
         self.schema_validator.validate_args(args, tool_def.args_schema, tool_name)
 
-    def get_tool_metadata(self, tool_name: str) -> Optional[Dict[str, Any]]:
+    def get_tool_metadata(self, tool_name: str) -> dict[str, Any] | None:
         """
         Get tool metadata for MCP protocol responses.
 
@@ -795,7 +795,7 @@ class ToolRegistry:
             },
         }
 
-    def get_all_tool_metadata(self) -> List[Dict[str, Any]]:
+    def get_all_tool_metadata(self) -> list[dict[str, Any]]:
         """
         Get metadata for all tools for MCP list_tools response.
 
@@ -816,7 +816,7 @@ class ToolRegistry:
 
         return metadata_list
 
-    def get_mutating_tools(self) -> List[str]:
+    def get_mutating_tools(self) -> list[str]:
         """
         Get list of tools that mutate system state.
 
@@ -831,7 +831,7 @@ class ToolRegistry:
 
         return [name for name, tool_def in self._tools.items() if tool_def.mutates]
 
-    def get_confirmation_required_tools(self) -> List[str]:
+    def get_confirmation_required_tools(self) -> list[str]:
         """
         Get list of tools that require confirmation.
 

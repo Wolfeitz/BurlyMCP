@@ -2,14 +2,15 @@
 Integration tests for Docker operations using test containers.
 """
 
-import pytest
 import time
+
+import pytest
 import requests
-from pathlib import Path
 
 try:
     from testcontainers.compose import DockerCompose
     from testcontainers.core.generic import DockerContainer as GenericContainer
+
     import docker
 
     TESTCONTAINERS_AVAILABLE = True

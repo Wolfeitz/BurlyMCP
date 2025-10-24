@@ -9,19 +9,15 @@ to ensure safe and repeatable testing.
 
 import json
 import os
-import tempfile
-import time
-from pathlib import Path
-from typing import Dict, Any
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
 import pytest
-import requests
-import yaml
 
-from burly_mcp.tools.registry import ToolRegistry, ToolResult
 from burly_mcp.resource_limits import ExecutionResult
+from burly_mcp.tools.registry import ToolRegistry
 
 
+@pytest.mark.integration
 class TestDockerIntegration:
     """Integration tests for Docker CLI operations."""
 
@@ -44,6 +40,7 @@ class TestDockerIntegration:
         self.notify_success_patcher.stop()
         self.notify_failure_patcher.stop()
 
+    @pytest.mark.integration
     @patch("burly_mcp.tools.registry.execute_with_timeout")
     def test_docker_ps_success_with_containers(self, mock_execute):
         """Test docker_ps with successful container listing."""
@@ -99,6 +96,7 @@ def456ghi789	redis:alpine	"docker-entrypoint.s…"	1 hour ago	Up 1 hour	6379/tcp
         assert call_args["command"][1] == "ps"
         assert "--format" in call_args["command"]
 
+    @pytest.mark.integration
     @patch("burly_mcp.tools.registry.execute_with_timeout")
     def test_docker_ps_no_containers(self, mock_execute):
         """Test docker_ps with no running containers."""
@@ -128,6 +126,7 @@ def456ghi789	redis:alpine	"docker-entrypoint.s…"	1 hour ago	Up 1 hour	6379/tcp
         assert result.data["count"] == 0
         assert len(result.data["containers"]) == 0
 
+    @pytest.mark.integration
     @patch("burly_mcp.tools.registry.execute_with_timeout")
     def test_docker_ps_permission_denied(self, mock_execute):
         """Test docker_ps with permission denied error."""
@@ -154,6 +153,7 @@ def456ghi789	redis:alpine	"docker-entrypoint.s…"	1 hour ago	Up 1 hour	6379/tcp
         assert result.exit_code == 1
         assert "permission denied" in result.data["error"]
 
+    @pytest.mark.integration
     @patch("burly_mcp.tools.registry.execute_with_timeout")
     def test_docker_ps_daemon_not_running(self, mock_execute):
         """Test docker_ps when Docker daemon is not running."""
@@ -179,6 +179,7 @@ def456ghi789	redis:alpine	"docker-entrypoint.s…"	1 hour ago	Up 1 hour	6379/tcp
         assert "Cannot connect to Docker daemon - is Docker running?" in result.summary
         assert result.exit_code == 1
 
+    @pytest.mark.integration
     @patch("burly_mcp.tools.registry.execute_with_timeout")
     def test_docker_ps_command_not_found(self, mock_execute):
         """Test docker_ps when Docker CLI is not installed."""
@@ -204,6 +205,7 @@ def456ghi789	redis:alpine	"docker-entrypoint.s…"	1 hour ago	Up 1 hour	6379/tcp
         assert "Docker CLI not found - is Docker installed?" in result.summary
         assert result.exit_code == 127
 
+    @pytest.mark.integration
     @patch("burly_mcp.tools.registry.execute_with_timeout")
     def test_docker_ps_timeout(self, mock_execute):
         """Test docker_ps with command timeout."""
@@ -229,6 +231,7 @@ def456ghi789	redis:alpine	"docker-entrypoint.s…"	1 hour ago	Up 1 hour	6379/tcp
         assert "Docker command timed out" in result.summary
         assert result.data["timed_out"] is True
 
+    @pytest.mark.integration
     @patch("burly_mcp.tools.registry.execute_with_timeout")
     def test_docker_ps_output_truncation(self, mock_execute):
         """Test docker_ps with truncated output."""
@@ -639,6 +642,7 @@ This is a test blog post missing required fields.
             assert result.data["files_written"] >= 2
 
 
+@pytest.mark.integration
 class TestGotifyIntegration:
     """Integration tests for Gotify API operations."""
 
@@ -661,6 +665,7 @@ class TestGotifyIntegration:
         self.notify_success_patcher.stop()
         self.notify_failure_patcher.stop()
 
+    @pytest.mark.integration
     @patch("urllib.request.urlopen")
     def test_gotify_ping_success(self, mock_urlopen):
         """Test gotify_ping with successful API response."""
@@ -699,6 +704,7 @@ class TestGotifyIntegration:
         assert call_args.full_url == "http://localhost:8080/message"
         assert call_args.get_method() == "POST"
 
+    @pytest.mark.integration
     @patch("urllib.request.urlopen")
     def test_gotify_ping_authentication_error(self, mock_urlopen):
         """Test gotify_ping with authentication error."""
@@ -732,6 +738,7 @@ class TestGotifyIntegration:
         )
         assert result.exit_code != 0
 
+    @pytest.mark.integration
     @patch("urllib.request.urlopen")
     def test_gotify_ping_server_error(self, mock_urlopen):
         """Test gotify_ping with server error."""
@@ -761,6 +768,7 @@ class TestGotifyIntegration:
         assert "server error" in result.summary.lower() or "500" in result.summary
         assert result.exit_code != 0
 
+    @pytest.mark.integration
     @patch("urllib.request.urlopen")
     def test_gotify_ping_network_error(self, mock_urlopen):
         """Test gotify_ping with network connectivity error."""
@@ -787,6 +795,7 @@ class TestGotifyIntegration:
         )
         assert result.exit_code != 0
 
+    @pytest.mark.integration
     def test_gotify_ping_missing_configuration(self):
         """Test gotify_ping with missing configuration."""
         # Execute gotify_ping without environment variables
@@ -803,6 +812,7 @@ class TestGotifyIntegration:
         )
         assert result.exit_code != 0
 
+    @pytest.mark.integration
     @patch("urllib.request.urlopen")
     def test_gotify_ping_custom_priority(self, mock_urlopen):
         """Test gotify_ping with custom priority level."""
@@ -837,6 +847,7 @@ class TestGotifyIntegration:
         assert request_data["priority"] == 8
         assert request_data["message"] == "High priority notification"
 
+    @pytest.mark.integration
     @patch("urllib.request.urlopen")
     def test_gotify_ping_invalid_json_response(self, mock_urlopen):
         """Test gotify_ping with invalid JSON response."""

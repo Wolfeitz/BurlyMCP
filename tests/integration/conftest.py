@@ -2,12 +2,12 @@
 Integration test configuration and fixtures.
 """
 
-import pytest
-import docker
 import subprocess
 import time
-import os
-from pathlib import Path
+
+import pytest
+
+import docker
 
 
 def pytest_configure(config):
@@ -250,7 +250,6 @@ def pytest_runtest_teardown(item):
 def performance_monitor():
     """Monitor performance during integration tests."""
     import psutil
-    import time
 
     start_time = time.time()
     start_memory = psutil.virtual_memory().used
@@ -267,7 +266,7 @@ def performance_monitor():
     memory_delta = end_memory - start_memory
     cpu_delta = end_cpu - start_cpu
 
-    print(f"\nPerformance metrics:")
+    print("\nPerformance metrics:")
     print(f"  Duration: {duration:.2f}s")
     print(f"  Memory delta: {memory_delta / 1024 / 1024:.2f}MB")
     print(f"  CPU delta: {cpu_delta:.2f}%")

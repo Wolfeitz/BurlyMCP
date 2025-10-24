@@ -1,10 +1,12 @@
-name: Test Suite
+name: Legacy Test Suite (Deprecated)
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
+  workflow_dispatch:  # Manual trigger only
+    inputs:
+      reason:
+        description: 'Reason for running legacy tests'
+        required: true
+        type: string
 
 jobs:
   test:

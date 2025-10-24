@@ -2,13 +2,11 @@
 Unit tests for the Burly MCP policy engine.
 """
 
-import pytest
-from unittest.mock import Mock, patch, mock_open
-from pathlib import Path
-import yaml
-import json
-import tempfile
 import os
+import tempfile
+
+import pytest
+import yaml
 
 
 class TestPolicyLoader:
@@ -20,7 +18,7 @@ class TestPolicyLoader:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = os.path.join(temp_dir, "test_policy.yaml")
-            
+
             # Create a minimal valid policy file
             policy_content = {
                 "version": "1.0",
@@ -35,7 +33,7 @@ class TestPolicyLoader:
                     }
                 }
             }
-            
+
             with open(policy_file, 'w') as f:
                 yaml.dump(policy_content, f)
 
@@ -50,7 +48,7 @@ class TestPolicyLoader:
 
         # Use current directory to avoid path traversal issues
         policy_file = "test_policy.yaml"
-        
+
         policy_content = {
             "version": "1.0",
             "tools": {
@@ -69,7 +67,7 @@ class TestPolicyLoader:
                 }
             }
         }
-            
+
         try:
             with open(policy_file, 'w') as f:
                 yaml.dump(policy_content, f)
@@ -101,7 +99,7 @@ class TestPolicyLoader:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = os.path.join(temp_dir, "invalid_policy.yaml")
-            
+
             # Write invalid YAML
             with open(policy_file, 'w') as f:
                 f.write("invalid: yaml: content: [")
@@ -118,7 +116,7 @@ class TestPolicyLoader:
 
         # Use current directory to avoid path traversal issues
         policy_file = "test_policy_structure.yaml"
-            
+
         # Valid policy structure
         policy_content = {
             "version": "1.0",
@@ -133,14 +131,14 @@ class TestPolicyLoader:
                 }
             }
         }
-        
+
         try:
             with open(policy_file, 'w') as f:
                 yaml.dump(policy_content, f)
 
             loader = PolicyLoader(policy_file)
             loader.load_policy()
-            
+
             # Should load successfully
             assert loader.is_loaded()
         finally:
@@ -155,13 +153,13 @@ class TestPolicyLoader:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = os.path.join(temp_dir, "test_policy.yaml")
-            
+
             # Policy missing tools section
             policy_content = {
                 "version": "1.0"
                 # Missing tools section
             }
-            
+
             with open(policy_file, 'w') as f:
                 yaml.dump(policy_content, f)
 
@@ -177,7 +175,7 @@ class TestPolicyLoader:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = os.path.join(temp_dir, "test_policy.yaml")
-            
+
             policy_content = {
                 "version": "1.0",
                 "tools": {
@@ -191,7 +189,7 @@ class TestPolicyLoader:
                     }
                 }
             }
-            
+
             with open(policy_file, 'w') as f:
                 yaml.dump(policy_content, f)
 
@@ -216,7 +214,7 @@ class TestPolicyLoader:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = os.path.join(temp_dir, "test_policy.yaml")
-            
+
             policy_content = {
                 "version": "1.0",
                 "tools": {
@@ -238,7 +236,7 @@ class TestPolicyLoader:
                     }
                 }
             }
-            
+
             with open(policy_file, 'w') as f:
                 yaml.dump(policy_content, f)
 
@@ -256,7 +254,7 @@ class TestPolicyLoader:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = os.path.join(temp_dir, "test_policy.yaml")
-            
+
             policy_content = {
                 "version": "1.0",
                 "tools": {
@@ -278,7 +276,7 @@ class TestPolicyLoader:
                     }
                 }
             }
-            
+
             with open(policy_file, 'w') as f:
                 yaml.dump(policy_content, f)
 
@@ -296,7 +294,7 @@ class TestPolicyLoader:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = os.path.join(temp_dir, "test_policy.yaml")
-            
+
             policy_content = {
                 "version": "1.0",
                 "tools": {
@@ -318,7 +316,7 @@ class TestPolicyLoader:
                     }
                 }
             }
-            
+
             with open(policy_file, 'w') as f:
                 yaml.dump(policy_content, f)
 
@@ -345,7 +343,7 @@ class TestSchemaValidator:
         from burly_mcp.policy.engine import SchemaValidator
 
         validator = SchemaValidator()
-        
+
         schema = {
             "type": "object",
             "properties": {
@@ -354,18 +352,18 @@ class TestSchemaValidator:
             },
             "required": ["name"]
         }
-        
+
         args = {"name": "John", "age": 30}
-        
+
         # Should not raise exception
         validator.validate_args(args, schema, "test_tool")
 
     def test_validate_args_failure(self):
         """Test argument validation failure."""
-        from burly_mcp.policy.engine import SchemaValidator, SchemaValidationError
+        from burly_mcp.policy.engine import SchemaValidationError, SchemaValidator
 
         validator = SchemaValidator()
-        
+
         schema = {
             "type": "object",
             "properties": {
@@ -374,19 +372,19 @@ class TestSchemaValidator:
             },
             "required": ["name"]
         }
-        
+
         # Missing required field
         args = {"age": 30}
-        
+
         with pytest.raises(SchemaValidationError):
             validator.validate_args(args, schema, "test_tool")
 
     def test_validate_args_type_mismatch(self):
         """Test argument validation with type mismatch."""
-        from burly_mcp.policy.engine import SchemaValidator, SchemaValidationError
+        from burly_mcp.policy.engine import SchemaValidationError, SchemaValidator
 
         validator = SchemaValidator()
-        
+
         schema = {
             "type": "object",
             "properties": {
@@ -394,10 +392,10 @@ class TestSchemaValidator:
                 "age": {"type": "integer"}
             }
         }
-        
+
         # Wrong type for age
         args = {"name": "John", "age": "thirty"}
-        
+
         with pytest.raises(SchemaValidationError):
             validator.validate_args(args, schema, "test_tool")
 
@@ -412,7 +410,7 @@ class TestPolicyToolRegistry:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = os.path.join(temp_dir, "test_policy.yaml")
-            
+
             policy_content = {
                 "version": "1.0",
                 "tools": {
@@ -426,7 +424,7 @@ class TestPolicyToolRegistry:
                     }
                 }
             }
-            
+
             with open(policy_file, 'w') as f:
                 yaml.dump(policy_content, f)
 
@@ -441,7 +439,7 @@ class TestPolicyToolRegistry:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = os.path.join(temp_dir, "test_policy.yaml")
-            
+
             policy_content = {
                 "version": "1.0",
                 "tools": {
@@ -463,13 +461,13 @@ class TestPolicyToolRegistry:
                     }
                 }
             }
-            
+
             with open(policy_file, 'w') as f:
                 yaml.dump(policy_content, f)
 
             registry = PolicyToolRegistry(policy_file)
             tools = registry.get_available_tools()
-            
+
             assert "tool1" in tools
             assert "tool2" in tools
             assert len(tools) == 2
@@ -481,7 +479,7 @@ class TestPolicyToolRegistry:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = os.path.join(temp_dir, "test_policy.yaml")
-            
+
             policy_content = {
                 "version": "1.0",
                 "tools": {
@@ -495,12 +493,12 @@ class TestPolicyToolRegistry:
                     }
                 }
             }
-            
+
             with open(policy_file, 'w') as f:
                 yaml.dump(policy_content, f)
 
             registry = PolicyToolRegistry(policy_file)
-            
+
             assert registry.is_tool_allowed("allowed_tool") is True
             assert registry.is_tool_allowed("forbidden_tool") is False
 
@@ -511,7 +509,7 @@ class TestPolicyToolRegistry:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = os.path.join(temp_dir, "test_policy.yaml")
-            
+
             policy_content = {
                 "version": "1.0",
                 "tools": {
@@ -531,20 +529,20 @@ class TestPolicyToolRegistry:
                     }
                 }
             }
-            
+
             with open(policy_file, 'w') as f:
                 yaml.dump(policy_content, f)
 
             registry = PolicyToolRegistry(policy_file)
-            
+
             # Valid execution
             result = registry.validate_tool_execution("test_tool", {"message": "hello"})
             assert result is True
-            
+
             # Invalid execution (missing required arg)
             result = registry.validate_tool_execution("test_tool", {})
             assert result is False
-            
+
             # Non-existent tool
             result = registry.validate_tool_execution("nonexistent_tool", {})
             assert result is False

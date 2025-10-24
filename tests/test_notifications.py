@@ -8,17 +8,16 @@ Tests cover all notification providers and the notification manager.
 
 import json
 import os
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
-from server.notifications import (
+from burly_mcp.notifications.manager import (
+    ConsoleNotificationProvider,
+    GotifyNotificationProvider,
+    NotificationCategory,
     NotificationManager,
     NotificationMessage,
     NotificationPriority,
-    NotificationCategory,
-    GotifyNotificationProvider,
-    ConsoleNotificationProvider,
     WebhookNotificationProvider,
     get_notification_manager,
 )
@@ -768,9 +767,9 @@ class TestNotificationManagerGlobal:
     def test_get_notification_manager_singleton(self):
         """Test that get_notification_manager returns singleton instance."""
         # Clear any existing global instance
-        import server.notifications
+        import burly_mcp.notifications.manager
 
-        server.notifications._notification_manager = None
+        burly_mcp.notifications.manager._notification_manager = None
 
         manager1 = get_notification_manager()
         manager2 = get_notification_manager()
@@ -783,11 +782,11 @@ class TestNotificationManagerGlobal:
             mock_manager = Mock()
             mock_get_manager.return_value = mock_manager
 
-            from server.notifications import (
-                notify_tool_success,
-                notify_tool_failure,
-                notify_tool_confirmation,
+            from burly_mcp.notifications.manager import (
                 notify_security_violation,
+                notify_tool_confirmation,
+                notify_tool_failure,
+                notify_tool_success,
             )
 
             # Test each convenience function

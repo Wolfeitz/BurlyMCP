@@ -2,10 +2,10 @@
 Unit tests for the Burly MCP security module.
 """
 
-import pytest
-from unittest.mock import Mock, patch
 from pathlib import Path
-import os
+from unittest.mock import patch
+
+import pytest
 
 
 class TestSecurityValidator:
@@ -259,7 +259,7 @@ class TestSecurityFunctions:
 
     def test_validate_path_within_root(self):
         """Test path validation within root directory."""
-        from burly_mcp.security import validate_path_within_root, SecurityViolationError
+        from burly_mcp.security import SecurityViolationError, validate_path_within_root
 
         # Test valid path
         result = validate_path_within_root("/tmp/test.txt", "/tmp")

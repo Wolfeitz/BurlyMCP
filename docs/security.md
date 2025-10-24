@@ -1,6 +1,24 @@
 # Security Documentation
 
-Burly MCP is designed with security as a primary concern. This document outlines the security architecture, threat model, and best practices for secure deployment and operation.
+Burly MCP is designed with security as a primary concern. This document provides an overview of the security architecture and references detailed security documentation for the restructured project.
+
+## Quick Reference
+
+- **[Threat Model](security/threat-model.md)** - Comprehensive threat analysis and risk assessment
+- **[Best Practices](security/best-practices.md)** - Security best practices for deployment and operations
+- **[Vulnerability Reporting](security/vulnerability-reporting.md)** - How to report security vulnerabilities
+- **[Configuration Examples](security/configuration-examples.md)** - Secure configuration templates and examples
+
+## Security Overview for Restructured Project
+
+The Burly MCP project restructuring enhances security through:
+
+- **Proper Package Structure**: Eliminates path manipulation vulnerabilities
+- **Container Security Hardening**: Non-root execution with minimal privileges
+- **Comprehensive Audit Logging**: All operations tracked for compliance
+- **Policy-Based Access Control**: Whitelist-based tool execution
+- **Secret Management**: Docker secrets and environment variable security
+- **Automated Security Scanning**: CI/CD pipeline with vulnerability detection
 
 ## Security Architecture
 
@@ -329,17 +347,72 @@ malicious_inputs = [
 4. **Dependency Management** with vulnerability monitoring
 5. **Secret Scanning** to prevent credential leaks
 
+## Restructured Project Security Enhancements
+
+### Package Security Improvements
+
+The new `src/burly_mcp/` package structure provides:
+
+- **Import Security**: Eliminates relative import vulnerabilities
+- **Path Validation**: Centralized path security in `src/burly_mcp/security.py`
+- **Module Isolation**: Clear security boundaries between components
+- **Configuration Management**: Secure config handling in `src/burly_mcp/config.py`
+
+### Container Security Hardening
+
+Enhanced Docker security in the restructured project:
+
+```yaml
+# Security-hardened container configuration
+services:
+  burly-mcp:
+    user: "1000:1000"           # Non-root execution
+    read_only: true             # Read-only filesystem
+    cap_drop: [ALL]             # Drop all capabilities
+    security_opt:
+      - no-new-privileges:true  # Prevent privilege escalation
+```
+
+### CI/CD Security Integration
+
+Automated security scanning in GitHub Actions:
+
+- **Dependency Scanning**: pip-audit for known vulnerabilities
+- **Static Analysis**: Bandit for Python security issues
+- **Container Scanning**: Trivy for Docker image vulnerabilities
+- **Secret Detection**: Prevent credential leaks in commits
+
+### Configuration Security
+
+Secure configuration management:
+
+- **Environment Variables**: Template-based with security warnings
+- **Docker Secrets**: Production secret management
+- **Policy Validation**: Runtime security policy enforcement
+- **Audit Logging**: Comprehensive operation tracking
+
 ## Security Contacts
 
 For security-related questions or to report vulnerabilities:
 
-- **Email**: security@example.com
+- **Email**: security@burly-mcp.org
 - **Response Time**: 24 hours for initial response
-- **Disclosure Policy**: Coordinated disclosure preferred
-- **Bug Bounty**: Contact us for program details
+- **Disclosure Policy**: See [Vulnerability Reporting](security/vulnerability-reporting.md)
+- **Documentation**: Detailed guides in `docs/security/` directory
+
+## Security Documentation Structure
+
+```
+docs/security/
+├── threat-model.md           # Comprehensive threat analysis
+├── best-practices.md         # Deployment and operational security
+├── vulnerability-reporting.md # Security disclosure process
+└── configuration-examples.md # Secure configuration templates
+```
 
 ---
 
 **Last Updated**: 2024-01-01  
 **Next Review**: 2024-04-01  
-**Document Owner**: Security Team
+**Document Owner**: Security Team  
+**Classification**: Internal Use

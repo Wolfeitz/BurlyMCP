@@ -2,18 +2,16 @@
 System-wide integration tests for Burly MCP.
 """
 
-import pytest
 import json
+import os
 import subprocess
 import time
-import tempfile
-import shutil
-from pathlib import Path
-import os
-import yaml
+
+import pytest
 
 try:
     from testcontainers.core.generic import DockerContainer
+
     import docker
     TESTCONTAINERS_AVAILABLE = True
 except ImportError:

@@ -5,20 +5,17 @@ This module tests the PolicyLoader, SchemaValidator, and ToolRegistry classes
 to ensure proper YAML loading, schema validation, and tool management.
 """
 
-import pytest
-import os
-from pathlib import Path
-from typing import Dict, Any
 
-from server.policy import (
+import pytest
+
+from burly_mcp.policy.engine import (
     PolicyLoader,
-    SchemaValidator,
-    ToolRegistry,
     PolicyLoadError,
     PolicyValidationError,
     SchemaValidationError,
+    SchemaValidator,
     ToolDefinition,
-    PolicyConfig,
+    ToolRegistry,
 )
 
 

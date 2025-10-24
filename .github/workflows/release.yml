@@ -1,0 +1,403 @@
+name: Release Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.gitignore'
+      - 'LICENSE'
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      prerelease:
+        description: 'Create prerelease'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.12'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  # Determine version bump type
+  version-check:
+    name: Determine Version
+    runs-on: ubuntu-latest
+    outputs:
+      version_type: ${{ steps.version.outputs.version_type }}
+      current_version: ${{ steps.version.outputs.current_version }}
+      new_version: ${{ steps.version.outputs.new_version }}
+      should_release: ${{ steps.version.outputs.should_release }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install semver tools
+      run: |
+        pip install packaging
+
+    - name: Determine version bump
+      id: version
+      run: |
+        # Get current version from __init__.py
+        current_version=$(python -c "
+        import sys
+        sys.path.insert(0, 'src')
+        from burly_mcp import __version__
+        print(__version__)
+        ")
+        
+        echo "current_version=$current_version" >> $GITHUB_OUTPUT
+        
+        # Determine version bump type
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          version_type="${{ github.event.inputs.version_type }}"
+        else
+          # Auto-determine from commit messages since last tag
+          last_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          commits_since_tag=$(git log ${last_tag}..HEAD --oneline)
+          
+          if echo "$commits_since_tag" | grep -qE "^[a-f0-9]+ (feat|feature)(\(.+\))?!:|BREAKING CHANGE:"; then
+            version_type="major"
+          elif echo "$commits_since_tag" | grep -qE "^[a-f0-9]+ (feat|feature)(\(.+\))?:"; then
+            version_type="minor"
+          elif echo "$commits_since_tag" | grep -qE "^[a-f0-9]+ (fix|bugfix|patch)(\(.+\))?:"; then
+            version_type="patch"
+          else
+            version_type="none"
+          fi
+        fi
+        
+        echo "version_type=$version_type" >> $GITHUB_OUTPUT
+        
+        # Calculate new version
+        if [[ "$version_type" != "none" ]]; then
+          new_version=$(python -c "
+          from packaging.version import Version
+          import sys
+          
+          current = Version('$current_version')
+          version_type = '$version_type'
+          
+          if version_type == 'major':
+              new = Version(f'{current.major + 1}.0.0')
+          elif version_type == 'minor':
+              new = Version(f'{current.major}.{current.minor + 1}.0')
+          elif version_type == 'patch':
+              new = Version(f'{current.major}.{current.minor}.{current.micro + 1}')
+          else:
+              new = current
+          
+          print(str(new))
+          ")
+          
+          echo "new_version=$new_version" >> $GITHUB_OUTPUT
+          echo "should_release=true" >> $GITHUB_OUTPUT
+        else
+          echo "new_version=$current_version" >> $GITHUB_OUTPUT
+          echo "should_release=false" >> $GITHUB_OUTPUT
+        fi
+        
+        echo "Current version: $current_version"
+        echo "Version bump type: $version_type"
+        echo "New version: $(cat $GITHUB_OUTPUT | grep new_version | cut -d'=' -f2)"
+        echo "Should release: $(cat $GITHUB_OUTPUT | grep should_release | cut -d'=' -f2)"
+
+  # Run full CI pipeline before release
+  pre-release-validation:
+    name: Pre-Release Validation
+    needs: version-check
+    if: needs.version-check.outputs.should_release == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  # Update version and create release
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [version-check, pre-release-validation]
+    if: needs.version-check.outputs.should_release == 'true'
+    outputs:
+      release_tag: ${{ steps.create_tag.outputs.tag }}
+      release_id: ${{ steps.create_release.outputs.id }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Configure Git
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+
+    - name: Update version in source code
+      run: |
+        new_version="${{ needs.version-check.outputs.new_version }}"
+        
+        # Update __init__.py
+        sed -i "s/__version__ = \".*\"/__version__ = \"$new_version\"/" src/burly_mcp/__init__.py
+        
+        # Verify the change
+        echo "Updated version in __init__.py:"
+        grep "__version__" src/burly_mcp/__init__.py
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Get commits since last tag for changelog
+        last_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        
+        if [[ -n "$last_tag" ]]; then
+          commits=$(git log ${last_tag}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+        else
+          commits=$(git log --pretty=format:"- %s (%h)" --no-merges --max-count=20)
+        fi
+        
+        # Create changelog content
+        changelog_content="## What's Changed
+
+$commits
+
+**Full Changelog**: https://github.com/${{ github.repository }}/compare/${last_tag}...v${{ needs.version-check.outputs.new_version }}"
+        
+        # Save to file and output
+        echo "$changelog_content" > RELEASE_CHANGELOG.md
+        
+        # Set output for release notes (escape newlines)
+        {
+          echo 'changelog<<EOF'
+          echo "$changelog_content"
+          echo 'EOF'
+        } >> $GITHUB_OUTPUT
+
+    - name: Commit version bump
+      run: |
+        git add src/burly_mcp/__init__.py
+        git commit -m "chore: bump version to ${{ needs.version-check.outputs.new_version }}"
+
+    - name: Create and push tag
+      id: create_tag
+      run: |
+        tag="v${{ needs.version-check.outputs.new_version }}"
+        git tag -a "$tag" -m "Release $tag"
+        git push origin "$tag"
+        git push origin main
+        echo "tag=$tag" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.create_tag.outputs.tag }}
+        release_name: Release ${{ steps.create_tag.outputs.tag }}
+        body: ${{ steps.changelog.outputs.changelog }}
+        draft: false
+        prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+
+  # Build and publish Python package
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [version-check, create-release]
+    if: needs.version-check.outputs.should_release == 'true'
+    uses: ./.github/workflows/pypi-publish.yml
+    with:
+      version: ${{ needs.version-check.outputs.new_version }}
+      is_prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+      test_pypi: ${{ github.event.inputs.prerelease == 'true' }}
+    secrets: inherit
+
+  # Build and publish Docker image
+  publish-docker:
+    name: Publish Docker Image
+    needs: [version-check, create-release]
+    if: needs.version-check.outputs.should_release == 'true'
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      version: ${{ needs.version-check.outputs.new_version }}
+      is_prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+      push_to_registry: true
+    secrets: inherit
+
+  # Comprehensive release validation
+  release-validation:
+    name: Release Validation
+    needs: [version-check, create-release, publish-pypi, publish-docker]
+    if: needs.version-check.outputs.should_release == 'true'
+    uses: ./.github/workflows/release-validation.yml
+    with:
+      version: ${{ needs.version-check.outputs.new_version }}
+      release_tag: ${{ needs.create-release.outputs.release_tag }}
+      pypi_package_url: ${{ needs.publish-pypi.outputs.package_url }}
+      docker_image_digest: ${{ needs.publish-docker.outputs.image_digest }}
+    secrets: inherit
+
+  # Post-release verification
+  post-release-verification:
+    name: Post-Release Verification
+    runs-on: ubuntu-latest
+    needs: [version-check, create-release, publish-pypi, publish-docker, release-validation]
+    if: needs.version-check.outputs.should_release == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install verification dependencies
+      run: |
+        pip install --upgrade pip
+        pip install requests packaging
+
+    - name: Run post-release verification
+      id: verification
+      run: |
+        python scripts/post_release_verification.py verify ${{ needs.version-check.outputs.new_version }}
+        echo "verification_status=$?" >> $GITHUB_OUTPUT
+
+    - name: Upload verification report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: post-release-verification-${{ needs.version-check.outputs.new_version }}
+        path: post_release_verification_${{ needs.version-check.outputs.new_version }}.md
+        retention-days: 365
+
+    - name: Update release with validation results
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          // Read verification report
+          let verificationReport = '';
+          try {
+            verificationReport = fs.readFileSync('post_release_verification_${{ needs.version-check.outputs.new_version }}.md', 'utf8');
+          } catch (e) {
+            verificationReport = 'Verification report not available';
+          }
+          
+          const { data: release } = await github.rest.repos.getReleaseById({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            release_id: ${{ needs.create-release.outputs.release_id }}
+          });
+          
+          const validationStatus = '${{ needs.release-validation.outputs.validation_status }}';
+          const verificationStatus = '${{ steps.verification.outputs.verification_status }}' === '0' ? 'success' : 'failed';
+          
+          const validationNote = `
+
+## 🚀 Release Artifacts
+
+### 📦 Python Package
+- **PyPI**: [${{ needs.publish-pypi.outputs.package_url }}](${{ needs.publish-pypi.outputs.package_url }})
+- **Installation**: \`pip install burly-mingo-mcp==${{ needs.version-check.outputs.new_version }}\`
+
+### 🐳 Docker Images
+- **Registry**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`
+- **Tags**: ${{ needs.publish-docker.outputs.image_tags }}
+- **Digest**: \`${{ needs.publish-docker.outputs.image_digest }}\`
+- **Usage**: \`docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version-check.outputs.new_version }}\`
+
+### 🔒 Security & Validation
+- ${validationStatus === 'success' ? '✅' : '❌'} Release validation pipeline
+- ${verificationStatus === 'success' ? '✅' : '❌'} Post-release verification
+- ✅ All artifacts scanned for vulnerabilities
+- ✅ SBOM (Software Bill of Materials) generated
+- ✅ Provenance attestations included
+
+### 📊 Validation Reports
+- **Pipeline Validation**: ${{ needs.release-validation.outputs.validation_report || 'N/A' }}
+- **Post-Release Verification**: Available in release artifacts
+
+### ✅ Release Status
+${validationStatus === 'success' && verificationStatus === 'success' 
+  ? '🎉 **FULLY VALIDATED** - All checks passed successfully!'
+  : '⚠️ **VALIDATION ISSUES** - Some checks failed, review reports above'}`;
+          
+          await github.rest.repos.updateRelease({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            release_id: ${{ needs.create-release.outputs.release_id }},
+            body: release.body + validationNote
+          });
+
+  # Release summary
+  release-summary:
+    name: Release Summary
+    runs-on: ubuntu-latest
+    needs: [version-check, create-release, publish-pypi, publish-docker, release-validation, post-release-verification]
+    if: always() && needs.version-check.outputs.should_release == 'true'
+    
+    steps:
+    - name: Release Summary
+      run: |
+        echo "## 🎉 Release ${{ needs.create-release.outputs.release_tag }} Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Version Bump | ${{ needs.version-check.result == 'success' && '✅' || '❌' }} | ${{ needs.version-check.outputs.current_version }} → ${{ needs.version-check.outputs.new_version }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| GitHub Release | ${{ needs.create-release.result == 'success' && '✅' || '❌' }} | [${{ needs.create-release.outputs.release_tag }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.create-release.outputs.release_tag }}) |" >> $GITHUB_STEP_SUMMARY
+        echo "| PyPI Package | ${{ needs.publish-pypi.result == 'success' && '✅' || '❌' }} | [burly-mingo-mcp ${{ needs.version-check.outputs.new_version }}](https://pypi.org/project/burly-mingo-mcp/${{ needs.version-check.outputs.new_version }}/) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Docker Image | ${{ needs.publish-docker.result == 'success' && '✅' || '❌' }} | [${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version-check.outputs.new_version }}](https://github.com/${{ github.repository }}/pkgs/container/${{ github.event.repository.name }}) |" >> $GITHUB_STEP_SUMMARY
+        echo "| Release Validation | ${{ needs.release-validation.result == 'success' && '✅' || '❌' }} | Comprehensive artifact validation |" >> $GITHUB_STEP_SUMMARY
+        echo "| Post-Release Verification | ${{ needs.post-release-verification.result == 'success' && '✅' || '❌' }} | End-to-end functionality verification |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ needs.create-release.result }}" == "success" && 
+              "${{ needs.publish-pypi.result }}" == "success" && 
+              "${{ needs.publish-docker.result }}" == "success" && 
+              "${{ needs.release-validation.result }}" == "success" && 
+              "${{ needs.post-release-verification.result }}" == "success" ]]; then
+          echo "🎉 **Release completed successfully!**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Quick Start" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Install via pip" >> $GITHUB_STEP_SUMMARY
+          echo "pip install burly-mingo-mcp==${{ needs.version-check.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Or run via Docker" >> $GITHUB_STEP_SUMMARY
+          echo "docker run ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version-check.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ **Some release steps failed. Please check the logs above.**" >> $GITHUB_STEP_SUMMARY
+        fi

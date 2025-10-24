@@ -2,13 +2,11 @@
 Unit tests for the Burly MCP resource limits module.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-import time
-import threading
-import subprocess
-import tempfile
 import os
+import time
+from unittest.mock import Mock, patch
+
+import pytest
 
 
 class TestResourceLimiter:
@@ -149,7 +147,7 @@ class TestResourceLimiter:
 
         with patch("time.time", side_effect=[0, 0.1, 0.2, 2.0]):  # Simulate time progression
             result = limiter.monitor_process(pid=1234, duration=0.1)
-            
+
         assert isinstance(result, dict)
         assert "memory_mb" in result
         assert "cpu_percent" in result
@@ -175,7 +173,7 @@ class TestResourceLimiter:
         # Mock time to ensure we get samples and exit the loop
         with patch("time.time", side_effect=[0, 0.05, 0.1, 0.15, 1.0]):  # Simulate time progression
             result = limiter.monitor_process(pid=1234, duration=0.1)
-            
+
         assert isinstance(result, dict)
         assert "within_limits" in result
         # Memory is 300MB but limit is 200MB, so should be False
@@ -232,7 +230,7 @@ class TestResourceLimiter:
         limiter = ResourceLimiter()
 
         stats = limiter.get_process_stats(pid=1234)
-        
+
         assert stats["memory_mb"] == 100
         assert stats["cpu_percent"] == 25.5
         assert stats["name"] == "test_process"
@@ -248,7 +246,7 @@ class TestResourceLimiter:
         # Should return True (no monitoring) when psutil not available
         assert limiter.check_memory_usage(pid=1234) is True
         assert limiter.check_cpu_usage(pid=1234) is True
-        
+
         # monitor_process should return error dict when psutil not available
         result = limiter.monitor_process(pid=1234, duration=1.0)
         assert isinstance(result, dict)
@@ -259,7 +257,7 @@ class TestResourceLimiter:
         from burly_mcp.resource_limits import ResourceMonitor
 
         monitor = ResourceMonitor()
-        
+
         assert hasattr(monitor, "start_time")
         assert hasattr(monitor, "peak_memory")
         assert hasattr(monitor, "cpu_time")
@@ -270,11 +268,11 @@ class TestResourceLimiter:
         from burly_mcp.resource_limits import ResourceMonitor
 
         monitor = ResourceMonitor()
-        
+
         # Test start monitoring
         monitor.start_monitoring()
         assert monitor.start_time is not None
-        
+
         # Test stop monitoring
         with patch("time.time", return_value=monitor.start_time + 1.0):
             stats = monitor.stop_monitoring()

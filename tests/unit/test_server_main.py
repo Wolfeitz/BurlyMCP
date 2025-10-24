@@ -11,18 +11,19 @@ import signal
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch, call
+from unittest.mock import Mock, call, patch
+
 import pytest
 
 from burly_mcp.server.main import (
-    setup_logging,
-    load_configuration,
-    initialize_policy_engine,
     initialize_audit_system,
     initialize_notification_system,
+    initialize_policy_engine,
+    load_configuration,
+    main,
+    setup_logging,
     setup_signal_handlers,
     validate_environment,
-    main,
 )
 
 
@@ -86,7 +87,7 @@ class TestLoadConfiguration:
         """Test configuration loading with all defaults."""
         with patch.dict(os.environ, {}, clear=True):
             config = load_configuration()
-            
+
             assert config["policy_file"] == "config/policy/tools.yaml"
             assert config["blog_stage_root"] == "/app/data/blog/stage"
             assert config["blog_publish_root"] == "/app/data/blog/public"
@@ -114,10 +115,10 @@ class TestLoadConfiguration:
             "SERVER_NAME": "custom-server",
             "SERVER_VERSION": "1.0.0",
         }
-        
+
         with patch.dict(os.environ, env_vars):
             config = load_configuration()
-            
+
             assert config["policy_file"] == "/custom/policy.yaml"
             assert config["blog_stage_root"] == "/custom/stage"
             assert config["blog_publish_root"] == "/custom/public"
@@ -146,7 +147,7 @@ class TestLoadConfiguration:
             ("", False),
             ("invalid", False),
         ]
-        
+
         for env_value, expected in test_cases:
             with patch.dict(os.environ, {"NOTIFICATIONS_ENABLED": env_value}):
                 config = load_configuration()
@@ -165,31 +166,31 @@ class TestInitializePolicyEngine:
         mock_policy_loader = Mock()
         mock_policy_loader.get_all_tools.return_value = ["tool1", "tool2", "tool3"]
         mock_policy_loader_class.return_value = mock_policy_loader
-        
+
         mock_schema_validator = Mock()
         mock_schema_validator_class.return_value = mock_schema_validator
-        
+
         mock_registry = Mock()
         mock_registry_class.return_value = mock_registry
-        
+
         config = {"policy_file": "/test/policy.yaml"}
         logger = Mock()
-        
+
         # Call function
         result = initialize_policy_engine(config, logger)
-        
+
         # Verify calls
         mock_policy_loader_class.assert_called_once_with("/test/policy.yaml")
         mock_policy_loader.load_policy.assert_called_once()
         mock_schema_validator_class.assert_called_once()
         mock_registry_class.assert_called_once_with(mock_policy_loader, mock_schema_validator)
         mock_registry.initialize.assert_called_once()
-        
+
         # Verify logging
         logger.info.assert_any_call("Loading policy from: /test/policy.yaml")
         logger.info.assert_any_call("Policy loaded successfully with 3 tools")
         logger.info.assert_any_call("Policy engine initialized successfully")
-        
+
         assert result == mock_registry
 
     @patch("burly_mcp.server.main.PolicyLoader")
@@ -198,13 +199,13 @@ class TestInitializePolicyEngine:
         """Test policy engine initialization failure."""
         # Setup mock to raise exception
         mock_policy_loader_class.side_effect = Exception("Policy load failed")
-        
+
         config = {"policy_file": "/test/policy.yaml"}
         logger = Mock()
-        
+
         # Call function
         initialize_policy_engine(config, logger)
-        
+
         # Verify error handling
         logger.critical.assert_any_call("Failed to initialize policy engine: Policy load failed")
         logger.critical.assert_any_call("Cannot start server without valid policy configuration")
@@ -219,12 +220,12 @@ class TestInitializeAuditSystem:
         """Test successful audit system initialization."""
         mock_audit_logger = Mock()
         mock_get_audit_logger.return_value = mock_audit_logger
-        
+
         config = {"audit_log_path": "/test/audit.log"}
         logger = Mock()
-        
+
         result = initialize_audit_system(config, logger)
-        
+
         mock_get_audit_logger.assert_called_once_with("/test/audit.log")
         logger.info.assert_called_once_with("Audit logging initialized: /test/audit.log")
         assert result == mock_audit_logger
@@ -233,12 +234,12 @@ class TestInitializeAuditSystem:
     def test_initialize_audit_system_failure(self, mock_get_audit_logger):
         """Test audit system initialization failure."""
         mock_get_audit_logger.side_effect = Exception("Audit init failed")
-        
+
         config = {"audit_log_path": "/test/audit.log"}
         logger = Mock()
-        
+
         result = initialize_audit_system(config, logger)
-        
+
         logger.error.assert_called_once_with("Failed to initialize audit system: Audit init failed")
         logger.warning.assert_called_once_with("Continuing without audit logging (not recommended)")
         assert result is None
@@ -252,9 +253,9 @@ class TestInitializeNotificationSystem:
         """Test notification system when disabled."""
         config = {"notifications_enabled": False}
         logger = Mock()
-        
+
         result = initialize_notification_system(config, logger)
-        
+
         logger.info.assert_called_once_with("Notifications disabled by configuration")
         mock_get_notification_manager.assert_not_called()
         assert result is False
@@ -271,12 +272,12 @@ class TestInitializeNotificationSystem:
             ]
         }
         mock_get_notification_manager.return_value = mock_manager
-        
+
         config = {"notifications_enabled": True}
         logger = Mock()
-        
+
         result = initialize_notification_system(config, logger)
-        
+
         mock_get_notification_manager.assert_called_once()
         logger.info.assert_called_once_with("Notifications enabled with providers: ['console', 'gotify']")
         assert result is True
@@ -290,12 +291,12 @@ class TestInitializeNotificationSystem:
             "providers": []
         }
         mock_get_notification_manager.return_value = mock_manager
-        
+
         config = {"notifications_enabled": True}
         logger = Mock()
-        
+
         result = initialize_notification_system(config, logger)
-        
+
         logger.warning.assert_called_once_with("Notifications enabled but no providers available")
         assert result is False
 
@@ -303,12 +304,12 @@ class TestInitializeNotificationSystem:
     def test_initialize_notification_system_exception(self, mock_get_notification_manager):
         """Test notification system initialization exception."""
         mock_get_notification_manager.side_effect = Exception("Notification init failed")
-        
+
         config = {"notifications_enabled": True}
         logger = Mock()
-        
+
         result = initialize_notification_system(config, logger)
-        
+
         logger.error.assert_called_once_with("Failed to initialize notification system: Notification init failed")
         logger.warning.assert_called_once_with("Continuing without notifications")
         assert result is False
@@ -321,15 +322,15 @@ class TestSetupSignalHandlers:
     def test_setup_signal_handlers(self, mock_signal):
         """Test signal handler registration."""
         logger = Mock()
-        
+
         setup_signal_handlers(logger)
-        
+
         # Verify signal handlers were registered
         expected_calls = [
             call(signal.SIGTERM, mock_signal.call_args_list[0][0][1]),
             call(signal.SIGINT, mock_signal.call_args_list[1][0][1]),
         ]
-        
+
         # Check that SIGTERM and SIGINT were registered
         assert mock_signal.call_count >= 2
         assert mock_signal.call_args_list[0][0][0] == signal.SIGTERM
@@ -340,15 +341,15 @@ class TestSetupSignalHandlers:
     def test_signal_handler_execution(self, mock_exit, mock_signal):
         """Test signal handler execution."""
         logger = Mock()
-        
+
         setup_signal_handlers(logger)
-        
+
         # Get the signal handler function
         signal_handler = mock_signal.call_args_list[0][0][1]
-        
+
         # Call the signal handler
         signal_handler(signal.SIGTERM, None)
-        
+
         # Verify logging and exit
         logger.info.assert_any_call("Received SIGTERM, initiating graceful shutdown...")
         logger.info.assert_any_call("Shutdown complete")
@@ -363,16 +364,16 @@ class TestValidateEnvironment:
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = Path(temp_dir) / "policy.yaml"
             policy_file.write_text("test: policy")
-            
+
             stage_dir = Path(temp_dir) / "stage"
             stage_dir.mkdir()
-            
+
             publish_dir = Path(temp_dir) / "publish"
             publish_dir.mkdir()
-            
+
             audit_dir = Path(temp_dir) / "audit"
             audit_dir.mkdir()
-            
+
             config = {
                 "policy_file": str(policy_file),
                 "blog_stage_root": str(stage_dir),
@@ -380,9 +381,9 @@ class TestValidateEnvironment:
                 "audit_log_path": str(audit_dir / "audit.log"),
             }
             logger = Mock()
-            
+
             result = validate_environment(config, logger)
-            
+
             assert result is True
             logger.info.assert_called_once_with("Environment validation passed")
 
@@ -395,9 +396,9 @@ class TestValidateEnvironment:
             "audit_log_path": "/tmp/audit.log",
         }
         logger = Mock()
-        
+
         result = validate_environment(config, logger)
-        
+
         assert result is False
         logger.error.assert_any_call("Environment validation failed:")
         logger.error.assert_any_call("  - Policy file not found: /nonexistent/policy.yaml")
@@ -407,7 +408,7 @@ class TestValidateEnvironment:
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = Path(temp_dir) / "policy.yaml"
             policy_file.write_text("test: policy")
-            
+
             config = {
                 "policy_file": str(policy_file),
                 "blog_stage_root": "/root/restricted",
@@ -415,17 +416,17 @@ class TestValidateEnvironment:
                 "audit_log_path": "/root/restricted/audit.log",
             }
             logger = Mock()
-            
+
             with patch("os.makedirs", side_effect=PermissionError("Access denied")):
                 result = validate_environment(config, logger)
-                
+
                 assert result is False
                 logger.error.assert_any_call("Environment validation failed:")
 
 
 class TestMain:
     """Test main function."""
-    
+
     def setup_method(self):
         """Reset global variables before each test."""
         import sys
@@ -452,7 +453,7 @@ class TestMain:
         # Setup mocks
         mock_logger = Mock()
         mock_setup_logging.return_value = mock_logger
-        
+
         mock_config = {
             "server_name": "test-server",
             "server_version": "1.0.0",
@@ -460,27 +461,27 @@ class TestMain:
             "notifications_enabled": True,
         }
         mock_load_configuration.return_value = mock_config
-        
+
         mock_validate_environment.return_value = True
-        
+
         mock_policy_registry = Mock()
         mock_initialize_policy_engine.return_value = mock_policy_registry
-        
+
         mock_audit_logger = Mock()
         mock_initialize_audit_system.return_value = mock_audit_logger
-        
+
         mock_initialize_notification_system.return_value = True
-        
+
         mock_tool_registry = Mock()
         mock_tool_registry.tools = {"tool1": Mock(), "tool2": Mock()}
         mock_tool_registry_class.return_value = mock_tool_registry
-        
+
         mock_mcp_handler = Mock()
         mock_mcp_handler_class.return_value = mock_mcp_handler
-        
+
         # Call main
         main()
-        
+
         # Verify initialization sequence
         mock_setup_logging.assert_called_once()
         mock_setup_signal_handlers.assert_called_once_with(mock_logger)
@@ -504,7 +505,7 @@ class TestMain:
         """Test main function with environment validation failure."""
         mock_logger = Mock()
         mock_setup_logging.return_value = mock_logger
-        
+
         mock_config = {
             "server_name": "test-server",
             "server_version": "1.0.0",
@@ -512,15 +513,15 @@ class TestMain:
             "notifications_enabled": True,
         }
         mock_load_configuration.return_value = mock_config
-        
+
         mock_validate_environment.return_value = False
-        
+
         # Make sys.exit actually raise SystemExit to stop execution
         mock_exit.side_effect = SystemExit(1)
-        
+
         with pytest.raises(SystemExit):
             main()
-        
+
         mock_logger.critical.assert_called_once_with("Environment validation failed - cannot start server")
         mock_exit.assert_called_once_with(1)
 
@@ -530,10 +531,10 @@ class TestMain:
         """Test main function with keyboard interrupt."""
         mock_logger = Mock()
         mock_setup_logging.return_value = mock_logger
-        
+
         with patch("burly_mcp.server.main.setup_signal_handlers", side_effect=KeyboardInterrupt()):
             main()
-            
+
             mock_logger.info.assert_any_call("Received keyboard interrupt - shutting down")
             mock_exit.assert_called_once_with(0)
 
@@ -543,10 +544,10 @@ class TestMain:
         """Test main function with critical exception."""
         mock_logger = Mock()
         mock_setup_logging.return_value = mock_logger
-        
+
         with patch("burly_mcp.server.main.setup_signal_handlers", side_effect=Exception("Critical error")):
             main()
-            
+
             mock_logger.critical.assert_called_once_with("Critical error during startup: Critical error", exc_info=True)
             mock_exit.assert_called_once_with(1)
 
@@ -557,9 +558,9 @@ class TestMain:
             with patch("burly_mcp.server.main.setup_logging", side_effect=Exception("Logging failed")):
                 # Make sys.exit actually raise SystemExit to stop execution
                 mock_exit.side_effect = SystemExit(1)
-                
+
                 with pytest.raises(SystemExit):
                     main()
-                
+
                 mock_print.assert_called_once_with("Critical error during startup: Logging failed", file=sys.stderr)
                 mock_exit.assert_called_once_with(1)

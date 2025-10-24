@@ -2,14 +2,11 @@
 Unit tests for the Burly MCP audit module.
 """
 
-import pytest
-from unittest.mock import Mock, patch, mock_open
-from pathlib import Path
 import json
-import logging
-from datetime import datetime
-import tempfile
 import os
+import tempfile
+from datetime import UTC, datetime
+from unittest.mock import Mock, patch
 
 
 class TestAuditLogger:
@@ -58,7 +55,7 @@ class TestAuditLogger:
 
             # Verify log file was created and contains expected data
             assert os.path.exists(log_file)
-            with open(log_file, 'r') as f:
+            with open(log_file) as f:
                 log_line = f.readline().strip()
                 log_data = json.loads(log_line)
 
@@ -90,7 +87,7 @@ class TestAuditLogger:
                 stderr_truncated=50
             )
 
-            with open(log_file, 'r') as f:
+            with open(log_file) as f:
                 log_data = json.loads(f.readline().strip())
 
             assert log_data["tool"] == "failing_tool"
@@ -117,7 +114,7 @@ class TestAuditLogger:
 
             logger.log_security_violation(violation_data)
 
-            with open(log_file, 'r') as f:
+            with open(log_file) as f:
                 log_data = json.loads(f.readline().strip())
 
             assert log_data["tool"] == "SECURITY_VIOLATION"
@@ -242,11 +239,11 @@ class TestAuditLogger:
         with tempfile.TemporaryDirectory() as temp_dir:
             log_file = os.path.join(temp_dir, "nonexistent.jsonl")
             logger = AuditLogger(log_file_path=log_file)
-            
+
             # Delete the file to simulate it not existing
             if os.path.exists(log_file):
                 os.remove(log_file)
-            
+
             stats = logger.get_audit_stats()
 
             assert "error" in stats
@@ -254,11 +251,11 @@ class TestAuditLogger:
 
     def test_audit_record_creation(self):
         """Test audit record dataclass creation."""
+
         from burly_mcp.audit import AuditRecord
-        from datetime import datetime, timezone
 
         record = AuditRecord(
-            ts=datetime.now(timezone.utc).isoformat(),
+            ts=datetime.now(UTC).isoformat(),
             tool="test_tool",
             args_hash="abc123",
             mutates=False,
@@ -295,7 +292,7 @@ class TestGlobalAuditFunctions:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             log_file = os.path.join(temp_dir, "global_test.jsonl")
-            
+
             with patch("burly_mcp.audit.get_audit_logger") as mock_get_logger:
                 mock_logger = Mock()
                 mock_get_logger.return_value = mock_logger
@@ -345,7 +342,7 @@ class TestGlobalAuditFunctions:
             logger = AuditLogger(log_file_path=log_file)
 
             # Mock file write to raise an error
-            with patch("builtins.open", side_effect=IOError("Write failed")):
+            with patch("builtins.open", side_effect=OSError("Write failed")):
                 # Should not raise exception, just log error
                 logger.log_tool_execution(
                     tool_name="test_tool",

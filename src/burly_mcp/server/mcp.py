@@ -12,9 +12,9 @@ import json
 import logging
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from ..tools.registry import ToolRegistry
@@ -39,11 +39,11 @@ class MCPRequest:
     """
 
     method: str
-    name: Optional[str] = None
-    args: Optional[Dict[str, Any]] = None
+    name: str | None = None
+    args: dict[str, Any] | None = None
 
     @classmethod
-    def from_json(cls, json_data: Dict[str, Any]) -> "MCPRequest":
+    def from_json(cls, json_data: dict[str, Any]) -> "MCPRequest":
         """
         Parse an MCP request from JSON data.
 
@@ -81,11 +81,11 @@ class MCPResponse:
     ok: bool
     need_confirm: bool = False
     summary: str = ""
-    data: Optional[Dict[str, Any]] = None
+    data: dict[str, Any] | None = None
     stdout: str = ""
     stderr: str = ""
-    metrics: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    metrics: dict[str, Any] | None = None
+    error: str | None = None
 
     def __post_init__(self) -> None:
         """
@@ -137,7 +137,7 @@ class MCPResponse:
             if self.metrics is not None and "stderr_trunc" not in self.metrics:
                 self.metrics["stderr_trunc"] = len(self.stderr)
 
-    def to_json(self) -> Dict[str, Any]:
+    def to_json(self) -> dict[str, Any]:
         """
         Convert the response to a JSON-serializable dictionary.
 
@@ -209,7 +209,7 @@ class MCPResponse:
     def create_success(
         cls,
         summary: str,
-        data: Optional[Dict[str, Any]] = None,
+        data: dict[str, Any] | None = None,
         stdout: str = "",
         stderr: str = "",
         need_confirm: bool = False,
@@ -259,11 +259,11 @@ class MCPProtocolHandler:
         self.tool_registry = tool_registry
 
         # Security: Rate limiting to prevent DoS
-        self._request_times: List[float] = []
+        self._request_times: list[float] = []
         self._max_requests_per_minute = 60
         self._request_window = 60  # seconds
 
-    def read_request(self) -> Optional[MCPRequest]:
+    def read_request(self) -> MCPRequest | None:
         """
         Read and parse an MCP request from stdin.
 
@@ -419,7 +419,7 @@ class MCPProtocolHandler:
     def create_success_response(
         self,
         summary: str,
-        data: Optional[Dict[str, Any]] = None,
+        data: dict[str, Any] | None = None,
         stdout: str = "",
         stderr: str = "",
         need_confirm: bool = False,
@@ -461,7 +461,7 @@ class MCPProtocolHandler:
 
             if request.method == MCPMethod.LIST_TOOLS.value:
                 response = self._handle_list_tools()
-                logger.debug(f"list_tools completed successfully")
+                logger.debug("list_tools completed successfully")
                 return response
             elif request.method == MCPMethod.CALL_TOOL.value:
                 logger.debug(f"Calling tool: {request.name}")
