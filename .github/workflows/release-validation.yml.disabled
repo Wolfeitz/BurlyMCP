@@ -1,0 +1,530 @@
+name: Release Validation Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to validate'
+        required: true
+        type: string
+      release_tag:
+        description: 'Release tag to validate'
+        required: true
+        type: string
+      pypi_package_url:
+        description: 'PyPI package URL'
+        required: false
+        type: string
+      docker_image_digest:
+        description: 'Docker image digest'
+        required: false
+        type: string
+    outputs:
+      validation_status:
+        description: 'Overall validation status'
+        value: ${{ jobs.validation-summary.outputs.status }}
+      validation_report:
+        description: 'Validation report URL'
+        value: ${{ jobs.validation-summary.outputs.report_url }}
+
+env:
+  PYTHON_VERSION: '3.12'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
+jobs:
+  # Test PyPI package installation and functionality
+  validate-pypi-package:
+    name: Validate PyPI Package
+    runs-on: ubuntu-latest
+    if: inputs.pypi_package_url
+    outputs:
+      status: ${{ steps.validation.outputs.status }}
+      details: ${{ steps.validation.outputs.details }}
+    
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Wait for PyPI availability
+      run: |
+        echo "⏳ Waiting for package to be available on PyPI..."
+        max_attempts=10
+        attempt=1
+        
+        while [ $attempt -le $max_attempts ]; do
+          echo "Attempt $attempt/$max_attempts: Checking PyPI availability..."
+          
+          if pip index versions burly-mingo-mcp | grep -q "${{ inputs.version }}"; then
+            echo "✅ Package found on PyPI"
+            break
+          else
+            if [ $attempt -eq $max_attempts ]; then
+              echo "❌ Package not available on PyPI after $max_attempts attempts"
+              exit 1
+            fi
+            echo "⏳ Retrying in 30 seconds..."
+            sleep 30
+            attempt=$((attempt + 1))
+          fi
+        done
+
+    - name: Test package installation
+      id: validation
+      run: |
+        # Create clean environment
+        python -m venv validation_env
+        
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          source validation_env/Scripts/activate
+        else
+          source validation_env/bin/activate
+        fi
+        
+        # Install package
+        pip install --upgrade pip
+        pip install burly-mingo-mcp==${{ inputs.version }}
+        
+        # Test basic functionality
+        python -c "
+        import burly_mcp
+        assert burly_mcp.__version__ == '${{ inputs.version }}'
+        print(f'✅ Package version verified: {burly_mcp.__version__}')
+        print(f'Author: {burly_mcp.__author__}')
+        print(f'Description: {burly_mcp.__description__}')
+        "
+        
+        # Test console script
+        burly-mingo-mcp --help > /dev/null
+        echo "✅ Console script works"
+        
+        # Test import of main modules
+        python -c "
+        from burly_mcp.server import main
+        from burly_mcp.tools import ToolRegistry
+        from burly_mcp.policy import PolicyEngine
+        print('✅ All main modules import successfully')
+        "
+        
+        echo "status=success" >> $GITHUB_OUTPUT
+        echo "details=Package installation and functionality tests passed on ${{ matrix.os }} with Python ${{ matrix.python-version }}" >> $GITHUB_OUTPUT
+
+  # Test Docker image functionality
+  validate-docker-image:
+    name: Validate Docker Image
+    runs-on: ubuntu-latest
+    if: inputs.docker_image_digest
+    outputs:
+      status: ${{ steps.validation.outputs.status }}
+      details: ${{ steps.validation.outputs.details }}
+    
+    steps:
+    - name: Test Docker image functionality
+      id: validation
+      run: |
+        image_ref="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}"
+        
+        # Pull the image
+        docker pull "$image_ref"
+        
+        # Verify image digest matches
+        actual_digest=$(docker inspect "$image_ref" --format='{{index .RepoDigests 0}}' | cut -d'@' -f2)
+        expected_digest="${{ inputs.docker_image_digest }}"
+        
+        if [[ "$actual_digest" != "$expected_digest" ]]; then
+          echo "❌ Image digest mismatch!"
+          echo "Expected: $expected_digest"
+          echo "Actual: $actual_digest"
+          exit 1
+        fi
+        
+        echo "✅ Image digest verified"
+        
+        # Test basic functionality
+        docker run --rm "$image_ref" --help > /dev/null
+        echo "✅ Container help command works"
+        
+        # Test version output
+        version_output=$(docker run --rm "$image_ref" --version 2>/dev/null || echo "version check skipped")
+        echo "Container version output: $version_output"
+        
+        # Test image labels
+        labels=$(docker inspect "$image_ref" --format='{{json .Config.Labels}}')
+        echo "Image labels: $labels"
+        
+        # Verify security settings
+        user=$(docker inspect "$image_ref" --format='{{.Config.User}}')
+        if [[ "$user" != "1000" && "$user" != "agentops" ]]; then
+          echo "⚠️ Warning: Container not running as expected user (got: $user)"
+        else
+          echo "✅ Container user configuration correct"
+        fi
+        
+        echo "status=success" >> $GITHUB_OUTPUT
+        echo "details=Docker image functionality tests passed" >> $GITHUB_OUTPUT
+
+  # Test multi-platform Docker images
+  validate-multiplatform:
+    name: Validate Multi-Platform Images
+    runs-on: ubuntu-latest
+    if: inputs.docker_image_digest
+    outputs:
+      status: ${{ steps.validation.outputs.status }}
+      details: ${{ steps.validation.outputs.details }}
+    
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    
+    steps:
+    - name: Set up QEMU for multi-platform
+      uses: docker/setup-qemu-action@v3
+
+    - name: Test platform-specific image
+      id: validation
+      run: |
+        image_ref="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}"
+        
+        echo "Testing ${{ matrix.platform }} image..."
+        
+        # Test platform-specific image
+        docker run --rm --platform ${{ matrix.platform }} "$image_ref" --help > /dev/null
+        echo "✅ ${{ matrix.platform }} image works"
+        
+        # Get platform-specific image info
+        docker inspect --format='{{.Architecture}}/{{.Os}}' "$image_ref"
+        
+        echo "status=success" >> $GITHUB_OUTPUT
+        echo "details=${{ matrix.platform }} image validation passed" >> $GITHUB_OUTPUT
+
+  # Validate release artifacts and checksums
+  validate-release-artifacts:
+    name: Validate Release Artifacts
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.validation.outputs.status }}
+      details: ${{ steps.validation.outputs.details }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Download release artifacts
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          // Get release by tag
+          const { data: release } = await github.rest.repos.getReleaseByTag({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            tag: '${{ inputs.release_tag }}'
+          });
+          
+          console.log(`Found release: ${release.name}`);
+          console.log(`Assets: ${release.assets.length}`);
+          
+          // Download each asset
+          for (const asset of release.assets) {
+            console.log(`Downloading ${asset.name}...`);
+            
+            const response = await github.rest.repos.getReleaseAsset({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              asset_id: asset.id,
+              headers: {
+                Accept: 'application/octet-stream'
+              }
+            });
+            
+            fs.writeFileSync(asset.name, Buffer.from(response.data));
+            console.log(`✅ Downloaded ${asset.name}`);
+          }
+
+    - name: Validate checksums
+      id: validation
+      run: |
+        if [[ -f "SHA256SUMS" ]]; then
+          echo "Validating checksums..."
+          sha256sum -c SHA256SUMS
+          echo "✅ All checksums valid"
+        else
+          echo "⚠️ No SHA256SUMS file found"
+        fi
+        
+        # List all downloaded artifacts
+        echo "Release artifacts:"
+        ls -la *.whl *.tar.gz *.md 2>/dev/null || echo "No package files found"
+        
+        # Validate wheel and source dist if present
+        if ls *.whl >/dev/null 2>&1; then
+          pip install twine
+          twine check *.whl *.tar.gz
+          echo "✅ Package validation passed"
+        fi
+        
+        echo "status=success" >> $GITHUB_OUTPUT
+        echo "details=Release artifacts validation completed" >> $GITHUB_OUTPUT
+
+  # Security validation of released artifacts
+  security-validation:
+    name: Security Validation
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.validation.outputs.status }}
+      details: ${{ steps.validation.outputs.details }}
+    
+    steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install security tools
+      run: |
+        pip install --upgrade pip
+        pip install safety pip-audit bandit
+
+    - name: Test package security
+      id: validation
+      run: |
+        # Install the released package
+        pip install burly-mingo-mcp==${{ inputs.version }}
+        
+        # Run security scans on installed package
+        echo "Running pip-audit on installed package..."
+        pip-audit --desc --format=json --output=pip-audit-results.json || true
+        pip-audit --desc
+        
+        echo "Running safety check..."
+        safety check --json --output=safety-results.json || true
+        safety check
+        
+        # Scan Docker image if available
+        if [[ -n "${{ inputs.docker_image_digest }}" ]]; then
+          echo "Scanning Docker image with Trivy..."
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --format json \
+            --output trivy-results.json \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }} || true
+          
+          # Also run blocking scan for critical issues
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --exit-code 1 \
+            --severity CRITICAL \
+            --ignore-unfixed \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}
+        fi
+        
+        echo "✅ Security validation completed"
+        echo "status=success" >> $GITHUB_OUTPUT
+        echo "details=Security scans completed successfully" >> $GITHUB_OUTPUT
+
+    - name: Upload security reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-validation-reports-${{ inputs.version }}
+        path: |
+          pip-audit-results.json
+          safety-results.json
+          trivy-results.json
+        retention-days: 90
+
+  # End-to-end functionality testing
+  e2e-functionality-test:
+    name: End-to-End Functionality Test
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.validation.outputs.status }}
+      details: ${{ steps.validation.outputs.details }}
+    
+    steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install and test package functionality
+      id: validation
+      run: |
+        # Install the package
+        pip install burly-mingo-mcp==${{ inputs.version }}
+        
+        # Test configuration loading
+        python -c "
+        from burly_mcp.config import Config
+        config = Config()
+        print('✅ Configuration loading works')
+        "
+        
+        # Test tool registry
+        python -c "
+        from burly_mcp.tools import ToolRegistry
+        registry = ToolRegistry()
+        print('✅ Tool registry initialization works')
+        "
+        
+        # Test policy engine
+        python -c "
+        from burly_mcp.policy import PolicyEngine
+        engine = PolicyEngine()
+        print('✅ Policy engine initialization works')
+        "
+        
+        echo "✅ End-to-end functionality test passed"
+        echo "status=success" >> $GITHUB_OUTPUT
+        echo "details=All core functionality tests passed" >> $GITHUB_OUTPUT
+
+  # Performance and resource validation
+  performance-validation:
+    name: Performance Validation
+    runs-on: ubuntu-latest
+    if: inputs.docker_image_digest
+    outputs:
+      status: ${{ steps.validation.outputs.status }}
+      details: ${{ steps.validation.outputs.details }}
+    
+    steps:
+    - name: Test Docker image performance
+      id: validation
+      run: |
+        image_ref="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}"
+        
+        # Test startup time
+        echo "Testing container startup time..."
+        start_time=$(date +%s%N)
+        docker run --rm "$image_ref" --help > /dev/null
+        end_time=$(date +%s%N)
+        startup_time=$(( (end_time - start_time) / 1000000 ))  # Convert to milliseconds
+        
+        echo "Container startup time: ${startup_time}ms"
+        
+        # Test image size
+        image_size=$(docker inspect "$image_ref" --format='{{.Size}}')
+        image_size_mb=$(( image_size / 1024 / 1024 ))
+        
+        echo "Image size: ${image_size_mb}MB"
+        
+        # Validate reasonable performance thresholds
+        if [[ $startup_time -gt 10000 ]]; then  # 10 seconds
+          echo "⚠️ Warning: Container startup time is high (${startup_time}ms)"
+        fi
+        
+        if [[ $image_size_mb -gt 1000 ]]; then  # 1GB
+          echo "⚠️ Warning: Image size is large (${image_size_mb}MB)"
+        fi
+        
+        echo "✅ Performance validation completed"
+        echo "status=success" >> $GITHUB_OUTPUT
+        echo "details=Startup time: ${startup_time}ms, Image size: ${image_size_mb}MB" >> $GITHUB_OUTPUT
+
+  # Validation summary and reporting
+  validation-summary:
+    name: Validation Summary
+    runs-on: ubuntu-latest
+    needs: [
+      validate-pypi-package,
+      validate-docker-image,
+      validate-multiplatform,
+      validate-release-artifacts,
+      security-validation,
+      e2e-functionality-test,
+      performance-validation
+    ]
+    if: always()
+    outputs:
+      status: ${{ steps.summary.outputs.status }}
+      report_url: ${{ steps.summary.outputs.report_url }}
+    
+    steps:
+    - name: Generate validation summary
+      id: summary
+      run: |
+        echo "## 🔍 Release Validation Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Release**: ${{ inputs.release_tag }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Version**: ${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Validation Date**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Check results from all jobs
+        pypi_status="${{ needs.validate-pypi-package.result }}"
+        docker_status="${{ needs.validate-docker-image.result }}"
+        multiplatform_status="${{ needs.validate-multiplatform.result }}"
+        artifacts_status="${{ needs.validate-release-artifacts.result }}"
+        security_status="${{ needs.security-validation.result }}"
+        e2e_status="${{ needs.e2e-functionality-test.result }}"
+        performance_status="${{ needs.performance-validation.result }}"
+        
+        echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+        echo "| PyPI Package | ${{ needs.validate-pypi-package.result == 'success' && '✅' || needs.validate-pypi-package.result == 'skipped' && '⏭️' || '❌' }} | Cross-platform installation tests |" >> $GITHUB_STEP_SUMMARY
+        echo "| Docker Image | ${{ needs.validate-docker-image.result == 'success' && '✅' || needs.validate-docker-image.result == 'skipped' && '⏭️' || '❌' }} | Functionality and security tests |" >> $GITHUB_STEP_SUMMARY
+        echo "| Multi-Platform | ${{ needs.validate-multiplatform.result == 'success' && '✅' || needs.validate-multiplatform.result == 'skipped' && '⏭️' || '❌' }} | AMD64 and ARM64 compatibility |" >> $GITHUB_STEP_SUMMARY
+        echo "| Release Artifacts | ${{ needs.validate-release-artifacts.result == 'success' && '✅' || '❌' }} | Checksums and package validation |" >> $GITHUB_STEP_SUMMARY
+        echo "| Security Scan | ${{ needs.security-validation.result == 'success' && '✅' || '❌' }} | Vulnerability and security analysis |" >> $GITHUB_STEP_SUMMARY
+        echo "| E2E Functionality | ${{ needs.e2e-functionality-test.result == 'success' && '✅' || '❌' }} | Core functionality validation |" >> $GITHUB_STEP_SUMMARY
+        echo "| Performance | ${{ needs.performance-validation.result == 'success' && '✅' || needs.performance-validation.result == 'skipped' && '⏭️' || '❌' }} | Startup time and resource usage |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Determine overall status
+        failed_jobs=0
+        
+        for status in "$pypi_status" "$docker_status" "$multiplatform_status" "$artifacts_status" "$security_status" "$e2e_status" "$performance_status"; do
+          if [[ "$status" == "failure" ]]; then
+            failed_jobs=$((failed_jobs + 1))
+          fi
+        done
+        
+        if [[ $failed_jobs -eq 0 ]]; then
+          echo "🎉 **All validation checks passed!**" >> $GITHUB_STEP_SUMMARY
+          echo "status=success" >> $GITHUB_OUTPUT
+        else
+          echo "❌ **$failed_jobs validation checks failed**" >> $GITHUB_STEP_SUMMARY
+          echo "status=failure" >> $GITHUB_OUTPUT
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📊 Validation Details" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ -n "${{ inputs.pypi_package_url }}" ]]; then
+          echo "**PyPI Package**: [${{ inputs.pypi_package_url }}](${{ inputs.pypi_package_url }})" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [[ -n "${{ inputs.docker_image_digest }}" ]]; then
+          echo "**Docker Image**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Digest**: \`${{ inputs.docker_image_digest }}\`" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "report_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_OUTPUT
+
+    - name: Create validation badge
+      run: |
+        status="${{ steps.summary.outputs.status }}"
+        
+        if [[ "$status" == "success" ]]; then
+          badge_color="brightgreen"
+          badge_message="passing"
+        else
+          badge_color="red"
+          badge_message="failing"
+        fi
+        
+        echo "Validation badge: ![Validation](https://img.shields.io/badge/validation-$badge_message-$badge_color)"

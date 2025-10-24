@@ -35,7 +35,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -68,7 +68,7 @@ class ToolResult:
     success: bool
     need_confirm: bool
     summary: str
-    data: Optional[Dict[str, Any]]
+    data: dict[str, Any] | None
     stdout: str
     stderr: str
     exit_code: int
@@ -103,7 +103,7 @@ class ToolRegistry:
             "gotify_ping": {"mutates": False, "requires_confirm": False},
         }
 
-    def execute_tool(self, tool_name: str, args: Dict[str, Any]) -> ToolResult:
+    def execute_tool(self, tool_name: str, args: dict[str, Any]) -> ToolResult:
         """
         Execute the specified tool with the given arguments.
 
@@ -249,7 +249,7 @@ class ToolRegistry:
             "requires_confirm", False
         )
 
-    def _docker_ps(self, args: Dict[str, Any]) -> ToolResult:
+    def _docker_ps(self, args: dict[str, Any]) -> ToolResult:
         """
         List Docker containers using docker ps command.
 
@@ -257,6 +257,19 @@ class ToolRegistry:
         containers in a human-readable format. It handles Docker socket
         access errors gracefully and returns structured container data.
         """
+        # Check if Docker is disabled for testing
+        if os.getenv("DISABLE_DOCKER", "").lower() in ("1", "true", "yes"):
+            return ToolResult(
+                success=False,
+                need_confirm=False,
+                summary="Docker operations disabled in test environment",
+                data={"error": "DISABLE_DOCKER environment variable is set"},
+                stdout="",
+                stderr="Docker operations disabled for testing",
+                exit_code=1,
+                elapsed_ms=0,
+            )
+
         try:
             # Execute docker ps with table format for human-readable output
             cmd = [
@@ -374,7 +387,7 @@ class ToolRegistry:
                 elapsed_ms=0,
             )
 
-    def _disk_space(self, args: Dict[str, Any]) -> ToolResult:
+    def _disk_space(self, args: dict[str, Any]) -> ToolResult:
         """
         Check filesystem disk space using df -hT command.
 
@@ -520,7 +533,7 @@ class ToolRegistry:
                 elapsed_ms=0,
             )
 
-    def _blog_stage_markdown(self, args: Dict[str, Any]) -> ToolResult:
+    def _blog_stage_markdown(self, args: dict[str, Any]) -> ToolResult:
         """
         Validate Markdown file with YAML front-matter for blog staging.
 
@@ -600,7 +613,7 @@ class ToolRegistry:
 
             # Read the file content
             try:
-                with open(abs_file_path, "r", encoding="utf-8") as f:
+                with open(abs_file_path, encoding="utf-8") as f:
                     content = f.read()
             except PermissionError:
                 return ToolResult(
@@ -627,7 +640,7 @@ class ToolRegistry:
 
             # Parse YAML front-matter
             validation_errors = []
-            front_matter: Dict[str, Any] = {}
+            front_matter: dict[str, Any] = {}
 
             # Check for YAML front-matter delimiters
             if not content.startswith("---\n"):
@@ -712,7 +725,7 @@ class ToolRegistry:
                 elapsed_ms=0,
             )
 
-    def _blog_publish_static(self, args: Dict[str, Any]) -> ToolResult:
+    def _blog_publish_static(self, args: dict[str, Any]) -> ToolResult:
         """
         Publish blog content from staging to publish directory.
 
@@ -785,7 +798,7 @@ class ToolRegistry:
                         "publish_root": blog_publish_root,
                         "pattern": file_pattern,
                     },
-                    stdout=f"Files ready to publish:\n" + "\n".join(relative_files),
+                    stdout="Files ready to publish:\n" + "\n".join(relative_files),
                     stderr="",
                     exit_code=0,
                     elapsed_ms=0,
@@ -889,7 +902,7 @@ class ToolRegistry:
                 elapsed_ms=0,
             )
 
-    def _gotify_ping(self, args: Dict[str, Any]) -> ToolResult:
+    def _gotify_ping(self, args: dict[str, Any]) -> ToolResult:
         """
         Send a test notification via Gotify API.
 
@@ -897,6 +910,19 @@ class ToolRegistry:
         and configuration. It handles HTTP requests and network failures
         gracefully.
         """
+        # Check if network operations are disabled for testing
+        if os.getenv("NO_NETWORK", "").lower() in ("1", "true", "yes"):
+            return ToolResult(
+                success=False,
+                need_confirm=False,
+                summary="Network operations disabled in test environment",
+                data={"error": "NO_NETWORK environment variable is set"},
+                stdout="",
+                stderr="Network operations disabled for testing",
+                exit_code=1,
+                elapsed_ms=0,
+            )
+
         try:
             # Get Gotify configuration from environment
             gotify_url = os.environ.get("GOTIFY_URL", "")
@@ -956,7 +982,7 @@ class ToolRegistry:
 
             # Send the request with timeout
             try:
-                with urllib.request.urlopen(req, timeout=10) as response:
+                with urllib.request.urlopen(req, timeout=10) as response:  # nosec B310
                     response_data = response.read().decode("utf-8")
                     status_code = response.getcode()
 

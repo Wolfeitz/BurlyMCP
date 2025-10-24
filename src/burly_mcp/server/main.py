@@ -30,18 +30,17 @@ import os
 import signal
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from ..audit import AuditLogger, get_audit_logger
-from .mcp import MCPProtocolHandler
 from ..notifications import get_notification_manager
-from ..policy import PolicyLoader, SchemaValidator
-from ..policy import PolicyToolRegistry
+from ..policy import PolicyLoader, PolicyToolRegistry, SchemaValidator
 from ..tools import ToolRegistry
+from .mcp import MCPProtocolHandler
 
 # Global references for graceful shutdown
-_mcp_handler: Optional[MCPProtocolHandler] = None
-_logger: Optional[logging.Logger] = None
+_mcp_handler: MCPProtocolHandler | None = None
+_logger: logging.Logger | None = None
 
 
 def setup_logging() -> logging.Logger:
@@ -62,7 +61,11 @@ def setup_logging() -> logging.Logger:
     log_dir = os.environ.get("LOG_DIR", "/var/log/agentops")
 
     # Create log directory if it doesn't exist
-    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    try:
+        Path(log_dir).mkdir(parents=True, exist_ok=True)
+    except (OSError, PermissionError):
+        # If we can't create log directory, continue with console only
+        pass
 
     # Configure root logger
     root_logger = logging.getLogger()
@@ -101,7 +104,7 @@ def setup_logging() -> logging.Logger:
     return logging.getLogger(__name__)
 
 
-def load_configuration() -> Dict[str, Any]:
+def load_configuration() -> dict[str, Any]:
     """
     Load configuration from environment variables.
 
@@ -140,7 +143,7 @@ def load_configuration() -> Dict[str, Any]:
 
 
 def initialize_policy_engine(
-    config: Dict[str, Any], logger: logging.Logger
+    config: dict[str, Any], logger: logging.Logger
 ) -> PolicyToolRegistry:
     """
     Initialize the policy engine with tool definitions.
@@ -183,8 +186,8 @@ def initialize_policy_engine(
 
 
 def initialize_audit_system(
-    config: Dict[str, Any], logger: logging.Logger
-) -> Optional[AuditLogger]:
+    config: dict[str, Any], logger: logging.Logger
+) -> AuditLogger | None:
     """
     Initialize the audit logging system.
 
@@ -209,7 +212,7 @@ def initialize_audit_system(
 
 
 def initialize_notification_system(
-    config: Dict[str, Any], logger: logging.Logger
+    config: dict[str, Any], logger: logging.Logger
 ) -> bool:
     """
     Initialize the notification system.
@@ -275,7 +278,7 @@ def setup_signal_handlers(logger: logging.Logger) -> None:
         signal.signal(signal.SIGHUP, signal_handler)
 
 
-def validate_environment(config: Dict[str, Any], logger: logging.Logger) -> bool:
+def validate_environment(config: dict[str, Any], logger: logging.Logger) -> bool:
     """
     Validate the runtime environment and configuration.
 
@@ -385,7 +388,7 @@ def main() -> None:
         # Log startup summary
         _logger.info("=== Burly MCP Server Startup Complete ===")
         _logger.info(f"Available tools: {list(tool_registry.tools.keys())}")
-        _logger.info(f"Policy enforcement: enabled")
+        _logger.info("Policy enforcement: enabled")
         _logger.info(f"Audit logging: {'enabled' if audit_logger else 'disabled'}")
         _logger.info(
             f"Notifications: {'enabled' if notifications_available else 'disabled'}"

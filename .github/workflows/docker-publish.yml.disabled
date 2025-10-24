@@ -1,0 +1,258 @@
+name: Docker Image Publishing
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to tag the image with'
+        required: true
+        type: string
+      is_prerelease:
+        description: 'Whether this is a prerelease'
+        required: false
+        type: boolean
+        default: false
+      push_to_registry:
+        description: 'Whether to push to registry'
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      image_digest:
+        description: 'Docker image digest'
+        value: ${{ jobs.build-and-push.outputs.digest }}
+      image_tags:
+        description: 'Docker image tags'
+        value: ${{ jobs.build-and-push.outputs.tags }}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        platforms: linux/amd64,linux/arm64
+
+    - name: Log in to Container Registry
+      if: inputs.push_to_registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=raw,value=${{ inputs.version }}
+          type=raw,value=latest,enable=${{ !inputs.is_prerelease }}
+          type=raw,value=prerelease,enable=${{ inputs.is_prerelease }}
+          type=semver,pattern={{version}},value=v${{ inputs.version }}
+          type=semver,pattern={{major}}.{{minor}},value=v${{ inputs.version }},enable=${{ !inputs.is_prerelease }}
+          type=semver,pattern={{major}},value=v${{ inputs.version }},enable=${{ !inputs.is_prerelease }}
+        labels: |
+          org.opencontainers.image.title=Burly MCP
+          org.opencontainers.image.description=Secure MCP server for system operations
+          org.opencontainers.image.vendor=Burly MCP Team
+          org.opencontainers.image.version=${{ inputs.version }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.created=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: ${{ inputs.push_to_registry }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          VERSION=${{ inputs.version }}
+          BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          VCS_REF=${{ github.sha }}
+        provenance: true
+        sbom: true
+
+    - name: Generate SBOM
+      if: inputs.push_to_registry
+      uses: anchore/sbom-action@v0
+      with:
+        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}
+        format: spdx-json
+        output-file: sbom-${{ inputs.version }}.spdx.json
+
+    - name: Upload SBOM artifact
+      if: inputs.push_to_registry
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-sbom-${{ inputs.version }}
+        path: sbom-${{ inputs.version }}.spdx.json
+        retention-days: 90
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: inputs.push_to_registry
+    
+    steps:
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+        category: 'docker-image-${{ inputs.version }}'
+
+    - name: Run Trivy for blocking scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}
+        format: 'table'
+        exit-code: '1'
+        severity: 'CRITICAL,HIGH'
+        ignore-unfixed: true
+
+    - name: Generate security report
+      if: always()
+      run: |
+        echo "## Docker Security Scan Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Image**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Scan Date**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Detailed results are available in the Security tab." >> $GITHUB_STEP_SUMMARY
+
+  image-validation:
+    name: Validate Image
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: inputs.push_to_registry
+    
+    steps:
+    - name: Test image functionality
+      run: |
+        # Pull and test the image
+        docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}
+        
+        # Test basic functionality
+        echo "Testing image help command..."
+        docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }} --help
+        
+        # Test image metadata
+        echo "Checking image labels..."
+        docker inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }} \
+          --format='{{json .Config.Labels}}' | jq .
+        
+        echo "✅ Image validation successful"
+
+    - name: Test multi-platform images
+      run: |
+        # Test AMD64 image
+        echo "Testing AMD64 image..."
+        docker run --rm --platform linux/amd64 \
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }} --version || true
+        
+        # Test ARM64 image (if available)
+        echo "Testing ARM64 image..."
+        docker run --rm --platform linux/arm64 \
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }} --version || true
+        
+        echo "✅ Multi-platform validation completed"
+
+  update-readme:
+    name: Update Documentation
+    runs-on: ubuntu-latest
+    needs: [build-and-push, security-scan, image-validation]
+    if: inputs.push_to_registry && !inputs.is_prerelease
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update Docker Hub README
+      uses: peter-evans/dockerhub-description@v4
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        repository: ${{ github.repository }}
+        readme-filepath: ./docker/README.md
+        short-description: "Secure MCP server for system operations with Docker integration"
+      continue-on-error: true
+
+    - name: Update package registry description
+      run: |
+        # Update GitHub Container Registry description
+        echo "Updated Docker image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}"
+        echo "Build completed at: $(date -u)"
+        echo "Platforms: linux/amd64, linux/arm64"
+        echo "Security scan: Passed"
+
+  publish-summary:
+    name: Publish Summary
+    runs-on: ubuntu-latest
+    needs: [build-and-push, security-scan, image-validation]
+    if: always()
+    
+    steps:
+    - name: Generate publish summary
+      run: |
+        echo "## 🐳 Docker Image Publishing Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Build & Push | ${{ needs.build-and-push.result == 'success' && '✅' || '❌' }} | Multi-platform build |" >> $GITHUB_STEP_SUMMARY
+        echo "| Security Scan | ${{ needs.security-scan.result == 'success' && '✅' || '❌' }} | Trivy vulnerability scan |" >> $GITHUB_STEP_SUMMARY
+        echo "| Image Validation | ${{ needs.image-validation.result == 'success' && '✅' || '❌' }} | Functionality tests |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ inputs.push_to_registry }}" == "true" ]]; then
+          echo "### 📦 Published Images" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: \`${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Platforms**: linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 Usage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Pull and run the image" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "docker run ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "**Note**: Images were built but not pushed to registry (dry-run mode)" >> $GITHUB_STEP_SUMMARY
+        fi

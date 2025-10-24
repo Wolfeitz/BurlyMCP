@@ -7,18 +7,15 @@ and error handling scenarios.
 """
 
 import json
-import pytest
-import sys
 import time
-from io import StringIO
-from typing import Dict, Any
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
-from server.mcp import (
+import pytest
+
+from burly_mcp.server.mcp import (
+    MCPProtocolHandler,
     MCPRequest,
     MCPResponse,
-    MCPProtocolHandler,
-    MCPMethod,
 )
 
 

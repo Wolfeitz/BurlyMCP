@@ -1,0 +1,23 @@
+tools:
+  test_tool:
+    description: "Test tool for unit tests"
+    args_schema:
+      type: "object"
+      properties:
+        test_param:
+          type: "string"
+          description: "Test parameter"
+      required: ["test_param"]
+      additionalProperties: false
+    command: []
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 10
+    notify: ["success", "failure"]
+
+config:
+  output_truncate_limit: 1024
+  default_timeout_sec: 30
+  security:
+    enable_path_validation: true
+    allowed_paths: ["/tmp", "/var/tmp"]

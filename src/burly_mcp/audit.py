@@ -30,11 +30,9 @@ import hashlib
 import json
 import logging
 import os
-import time
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +68,7 @@ class AuditLogger:
     and comprehensive audit trail for all system operations.
     """
 
-    def __init__(self, log_file_path: Optional[str] = None):
+    def __init__(self, log_file_path: str | None = None):
         """
         Initialize the audit logger.
 
@@ -94,7 +92,7 @@ class AuditLogger:
     def log_tool_execution(
         self,
         tool_name: str,
-        args: Dict[str, Any],
+        args: dict[str, Any],
         mutates: bool,
         requires_confirm: bool,
         status: str,
@@ -122,7 +120,7 @@ class AuditLogger:
         try:
             # Create audit record
             record = AuditRecord(
-                ts=datetime.now(timezone.utc).isoformat(),
+                ts=datetime.now(UTC).isoformat(),
                 tool=tool_name,
                 args_hash=self._hash_sanitized_args(args),
                 mutates=mutates,
@@ -144,7 +142,7 @@ class AuditLogger:
             logger.error(f"Failed to log audit record for {tool_name}: {str(e)}")
             # Don't raise exception - audit logging failures shouldn't break tool execution
 
-    def log_security_violation(self, violation_data: Dict[str, Any]) -> None:
+    def log_security_violation(self, violation_data: dict[str, Any]) -> None:
         """
         Log a security violation event.
 
@@ -154,7 +152,7 @@ class AuditLogger:
         try:
             # Create special audit record for security violations
             record = AuditRecord(
-                ts=datetime.now(timezone.utc).isoformat(),
+                ts=datetime.now(UTC).isoformat(),
                 tool="SECURITY_VIOLATION",
                 args_hash=self._hash_sanitized_args(violation_data),
                 mutates=False,
@@ -194,13 +192,13 @@ class AuditLogger:
                 f.write(json_line + "\n")
                 f.flush()  # Ensure immediate write
 
-        except IOError as e:
+        except OSError as e:
             logger.error(
                 f"Failed to write audit record to {self.log_file_path}: {str(e)}"
             )
             raise
 
-    def _hash_sanitized_args(self, args: Dict[str, Any]) -> str:
+    def _hash_sanitized_args(self, args: dict[str, Any]) -> str:
         """
         Create a SHA-256 hash of sanitized arguments.
 
@@ -243,7 +241,7 @@ class AuditLogger:
         if not isinstance(args, dict):
             return args
 
-        sanitized: Dict[str, Any] = {}
+        sanitized: dict[str, Any] = {}
 
         for key, value in args.items():
             key_lower = key.lower()
@@ -290,7 +288,7 @@ class AuditLogger:
 
         return False
 
-    def _get_sensitive_env_vars(self) -> List[str]:
+    def _get_sensitive_env_vars(self) -> list[str]:
         """
         Get list of sensitive environment variable names.
 
@@ -319,7 +317,7 @@ class AuditLogger:
 
         return default_sensitive + custom_sensitive
 
-    def get_audit_stats(self, hours: int = 24) -> Dict[str, Any]:
+    def get_audit_stats(self, hours: int = 24) -> dict[str, Any]:
         """
         Get audit statistics for the specified time period.
 
@@ -333,7 +331,7 @@ class AuditLogger:
             if not os.path.exists(self.log_file_path):
                 return {"error": "audit_log_not_found"}
 
-            stats: Dict[str, Any] = {
+            stats: dict[str, Any] = {
                 "total_operations": 0,
                 "successful_operations": 0,
                 "failed_operations": 0,
@@ -343,10 +341,10 @@ class AuditLogger:
             }
 
             # Calculate cutoff time
-            cutoff_time = datetime.now(timezone.utc).timestamp() - (hours * 3600)
+            cutoff_time = datetime.now(UTC).timestamp() - (hours * 3600)
 
             # Read and analyze log file
-            with open(self.log_file_path, "r", encoding="utf-8") as f:
+            with open(self.log_file_path, encoding="utf-8") as f:
                 for line in f:
                     try:
                         record = json.loads(line.strip())
@@ -383,10 +381,10 @@ class AuditLogger:
 
 
 # Global audit logger instance
-_audit_logger: Optional[AuditLogger] = None
+_audit_logger: AuditLogger | None = None
 
 
-def get_audit_logger(log_file_path: Optional[str] = None) -> AuditLogger:
+def get_audit_logger(log_file_path: str | None = None) -> AuditLogger:
     """
     Get the global audit logger instance.
 
@@ -407,7 +405,7 @@ def get_audit_logger(log_file_path: Optional[str] = None) -> AuditLogger:
 
 def log_tool_execution(
     tool_name: str,
-    args: Dict[str, Any],
+    args: dict[str, Any],
     mutates: bool,
     requires_confirm: bool,
     status: str,
@@ -447,7 +445,7 @@ def log_tool_execution(
     )
 
 
-def log_security_violation(violation_data: Dict[str, Any]) -> None:
+def log_security_violation(violation_data: dict[str, Any]) -> None:
     """
     Convenience function to log security violations using the global audit logger.
 
