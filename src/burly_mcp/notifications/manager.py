@@ -374,19 +374,23 @@ class NotificationManager:
         if self.enabled:
             self._initialize_providers()
 
-    def send_notification(self, message: str, title: str = "", priority: str = "normal") -> bool:
+    def send_notification(self, message, title: str = "", priority: str = "normal") -> bool:
         """
-        Send a notification with title and message (test-compatible signature).
+        Send a notification with title and message or a NotificationMessage object.
         
         Args:
-            message: The notification message
-            title: The notification title
-            priority: The notification priority
+            message: Either a string message or a NotificationMessage object
+            title: The notification title (ignored if message is NotificationMessage)
+            priority: The notification priority (ignored if message is NotificationMessage)
             
         Returns:
             bool: True if notification was sent successfully
         """
-        # Convert to NotificationMessage format
+        # Handle NotificationMessage object directly
+        if isinstance(message, NotificationMessage):
+            return self._send_notification_internal(message)
+        
+        # Convert string parameters to NotificationMessage format
         priority_enum = {
             "low": NotificationPriority.LOW,
             "normal": NotificationPriority.NORMAL,
@@ -488,7 +492,7 @@ class NotificationManager:
             category=NotificationCategory.SECURITY_VIOLATION,
             metadata={"violation_type": violation_type},
         )
-        return self._send_notification_internal(notification)
+        return self.send_notification(notification)
 
     # Test-compatible method aliases
     def notify_tool_success(self, tool_name: str, summary: str, elapsed_ms: int = 0) -> bool:

@@ -151,7 +151,7 @@ class TestMCPProtocolEndToEnd:
                 assert json_response["ok"] is False
 
     @pytest.mark.integration
-    @patch("burly_mcp.resource_limits.execute_with_timeout")
+    @patch("burly_mcp.tools.registry.execute_with_timeout")
     def test_docker_ps_complete_mcp_cycle(self, mock_execute):
         """Test complete MCP cycle for docker_ps tool."""
         # Mock successful docker ps output
@@ -197,7 +197,7 @@ abc123def456	nginx:latest	"/docker-entrypoint.…"	2 hours ago	Up 2 hours	0.0.0.
         assert container["image"] == "nginx:latest"
         assert container["names"] == "web-server"
 
-    @patch("burly_mcp.resource_limits.execute_with_timeout")
+    @patch("burly_mcp.tools.registry.execute_with_timeout")
     def test_disk_space_complete_mcp_cycle(self, mock_execute):
         """Test complete MCP cycle for disk_space tool."""
         # Mock successful df output

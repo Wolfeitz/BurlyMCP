@@ -10,22 +10,17 @@ import time
 import pytest
 
 
-@pytest.mark.integration
-@pytest.mark.mcp
-class TestMCPProtocolIntegration:
-    """Integration tests for MCP protocol end-to-end functionality."""
+@pytest.fixture
+def mcp_server_config(tmp_path):
+    """Create MCP server configuration for testing."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
 
-    @pytest.fixture
-    def mcp_server_config(self, tmp_path):
-        """Create MCP server configuration for testing."""
-        config_dir = tmp_path / "config"
-        config_dir.mkdir()
+    policy_dir = config_dir / "policy"
+    policy_dir.mkdir()
 
-        policy_dir = config_dir / "policy"
-        policy_dir.mkdir()
-
-        # Create comprehensive test policy
-        policy_content = """
+    # Create comprehensive test policy
+    policy_content = """
 tools:
   echo_test:
     description: "Echo test command for integration testing"
@@ -85,54 +80,61 @@ config:
     allowed_paths: ["/tmp", "/var/tmp"]
 """
 
-        policy_file = policy_dir / "tools.yaml"
-        policy_file.write_text(policy_content)
+    policy_file = policy_dir / "tools.yaml"
+    policy_file.write_text(policy_content)
 
-        return config_dir
+    return config_dir
 
-    @pytest.fixture
-    def mcp_server_process(self, mcp_server_config):
-        """Start MCP server process for integration testing."""
-        # This would start the actual Burly MCP server
-        # For now, we'll mock this or skip if not available
 
-        env = os.environ.copy()
-        env.update(
-            {
-                "BURLY_CONFIG_DIR": str(mcp_server_config),
-                "BURLY_LOG_DIR": str(mcp_server_config / "logs"),
-                "NOTIFICATIONS_ENABLED": "false",
-                "AUDIT_ENABLED": "true",
-            }
+@pytest.fixture
+def mcp_server_process(mcp_server_config):
+    """Start MCP server process for integration testing."""
+    # This would start the actual Burly MCP server
+    # For now, we'll mock this or skip if not available
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "BURLY_CONFIG_DIR": str(mcp_server_config),
+            "BURLY_LOG_DIR": str(mcp_server_config / "logs"),
+            "NOTIFICATIONS_ENABLED": "false",
+            "AUDIT_ENABLED": "true",
+        }
+    )
+
+    try:
+        # Try to start the server
+        process = subprocess.Popen(
+            ["python", "-m", "burly_mcp.server.main"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            text=True,
         )
 
-        try:
-            # Try to start the server
-            process = subprocess.Popen(
-                ["python", "-m", "burly_mcp.server.main"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=env,
-                text=True,
-            )
+        # Give server time to start
+        time.sleep(1)
 
-            # Give server time to start
-            time.sleep(1)
+        if process.poll() is not None:
+            # Server failed to start
+            stdout, stderr = process.communicate()
+            pytest.skip(f"MCP server failed to start: {stderr}")
 
-            if process.poll() is not None:
-                # Server failed to start
-                stdout, stderr = process.communicate()
-                pytest.skip(f"MCP server failed to start: {stderr}")
+        yield process
 
-            yield process
+    except FileNotFoundError:
+        pytest.skip("Burly MCP server not available for integration testing")
+    finally:
+        if "process" in locals():
+            process.terminate()
+            process.wait(timeout=5)
 
-        except FileNotFoundError:
-            pytest.skip("Burly MCP server not available for integration testing")
-        finally:
-            if "process" in locals():
-                process.terminate()
-                process.wait(timeout=5)
+
+@pytest.mark.integration
+@pytest.mark.mcp
+class TestMCPProtocolIntegration:
+    """Integration tests for MCP protocol end-to-end functionality."""
 
     def test_mcp_list_tools_request(self, mcp_server_process):
         """Test MCP list_tools request."""
