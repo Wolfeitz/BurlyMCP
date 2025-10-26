@@ -41,9 +41,14 @@ jobs:
           python3 scripts/validate_yaml_json.py --strict
 
       - name: Validate GitHub Actions workflows
-        uses: docker://rhymond/github-action-validate-yaml:latest
-        with:
-          yaml_file: .github/workflows/*.yml
+        run: |
+          # Validate all workflow YAML files
+          for file in .github/workflows/*.yml; do
+            if [ -f "$file" ]; then
+              echo "Validating $file..."
+              python3 -c "import yaml; yaml.safe_load(open('$file'))"
+            fi
+          done
 
   validate-specific-configs:
     name: Validate Specific Configurations

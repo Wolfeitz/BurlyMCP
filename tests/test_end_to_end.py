@@ -506,9 +506,9 @@ class TestMCPProtocolLoop:
         self.mcp_handler = MCPProtocolHandler(tool_registry=self.tool_registry)
 
         # Patch audit and notification systems
-        self.audit_patcher = patch("server.tools.log_tool_execution")
-        self.notify_success_patcher = patch("server.tools.notify_tool_success")
-        self.notify_failure_patcher = patch("server.tools.notify_tool_failure")
+        self.audit_patcher = patch("burly_mcp.tools.registry.log_tool_execution")
+        self.notify_success_patcher = patch("burly_mcp.tools.registry.notify_tool_success")
+        self.notify_failure_patcher = patch("burly_mcp.tools.registry.notify_tool_failure")
 
         self.mock_audit = self.audit_patcher.start()
         self.mock_notify_success = self.notify_success_patcher.start()
@@ -648,10 +648,10 @@ class TestConfirmationWorkflows:
         self.mcp_handler = MCPProtocolHandler(tool_registry=self.tool_registry)
 
         # Patch audit and notification systems
-        self.audit_patcher = patch("server.tools.log_tool_execution")
-        self.notify_success_patcher = patch("server.tools.notify_tool_success")
-        self.notify_failure_patcher = patch("server.tools.notify_tool_failure")
-        self.notify_confirm_patcher = patch("server.tools.notify_tool_confirmation")
+        self.audit_patcher = patch("burly_mcp.tools.registry.log_tool_execution")
+        self.notify_success_patcher = patch("burly_mcp.tools.registry.notify_tool_success")
+        self.notify_failure_patcher = patch("burly_mcp.tools.registry.notify_tool_failure")
+        self.notify_confirm_patcher = patch("burly_mcp.tools.registry.notify_tool_confirmation")
 
         self.mock_audit = self.audit_patcher.start()
         self.mock_notify_success = self.notify_success_patcher.start()
@@ -773,7 +773,7 @@ class TestConfirmationWorkflows:
             request = MCPRequest.from_json(request_data)
 
             # Mock any external dependencies
-            with patch("server.tools.execute_with_timeout") as mock_execute:
+            with patch("burly_mcp.tools.registry.execute_with_timeout") as mock_execute:
                 mock_execute.return_value = ExecutionResult(
                     success=True,
                     exit_code=0,

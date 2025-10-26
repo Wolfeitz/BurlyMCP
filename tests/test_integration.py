@@ -26,9 +26,9 @@ class TestDockerIntegration:
         self.registry = ToolRegistry()
 
         # Patch audit and notification systems for all tests
-        self.audit_patcher = patch("server.tools.log_tool_execution")
-        self.notify_success_patcher = patch("server.tools.notify_tool_success")
-        self.notify_failure_patcher = patch("server.tools.notify_tool_failure")
+        self.audit_patcher = patch("burly_mcp.tools.registry.log_tool_execution")
+        self.notify_success_patcher = patch("burly_mcp.tools.registry.notify_tool_success")
+        self.notify_failure_patcher = patch("burly_mcp.tools.registry.notify_tool_failure")
 
         self.mock_audit = self.audit_patcher.start()
         self.mock_notify_success = self.notify_success_patcher.start()
@@ -271,10 +271,10 @@ class TestFileSystemIntegration:
         self.registry = ToolRegistry()
 
         # Patch audit and notification systems for all tests
-        self.audit_patcher = patch("server.tools.log_tool_execution")
-        self.notify_success_patcher = patch("server.tools.notify_tool_success")
-        self.notify_failure_patcher = patch("server.tools.notify_tool_failure")
-        self.notify_confirm_patcher = patch("server.tools.notify_tool_confirmation")
+        self.audit_patcher = patch("burly_mcp.tools.registry.log_tool_execution")
+        self.notify_success_patcher = patch("burly_mcp.tools.registry.notify_tool_success")
+        self.notify_failure_patcher = patch("burly_mcp.tools.registry.notify_tool_failure")
+        self.notify_confirm_patcher = patch("burly_mcp.tools.registry.notify_tool_confirmation")
 
         self.mock_audit = self.audit_patcher.start()
         self.mock_notify_success = self.notify_success_patcher.start()
@@ -651,9 +651,9 @@ class TestGotifyIntegration:
         self.registry = ToolRegistry()
 
         # Patch audit and notification systems for all tests
-        self.audit_patcher = patch("server.tools.log_tool_execution")
-        self.notify_success_patcher = patch("server.tools.notify_tool_success")
-        self.notify_failure_patcher = patch("server.tools.notify_tool_failure")
+        self.audit_patcher = patch("burly_mcp.tools.registry.log_tool_execution")
+        self.notify_success_patcher = patch("burly_mcp.tools.registry.notify_tool_success")
+        self.notify_failure_patcher = patch("burly_mcp.tools.registry.notify_tool_failure")
 
         self.mock_audit = self.audit_patcher.start()
         self.mock_notify_success = self.notify_success_patcher.start()
@@ -893,9 +893,9 @@ class TestToolRegistryIntegration:
         self.registry = ToolRegistry()
 
         # Patch audit and notification systems for all tests
-        self.audit_patcher = patch("server.tools.log_tool_execution")
-        self.notify_success_patcher = patch("server.tools.notify_tool_success")
-        self.notify_failure_patcher = patch("server.tools.notify_tool_failure")
+        self.audit_patcher = patch("burly_mcp.tools.registry.log_tool_execution")
+        self.notify_success_patcher = patch("burly_mcp.tools.registry.notify_tool_success")
+        self.notify_failure_patcher = patch("burly_mcp.tools.registry.notify_tool_failure")
 
         self.mock_audit = self.audit_patcher.start()
         self.mock_notify_success = self.notify_success_patcher.start()

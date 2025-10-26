@@ -28,47 +28,50 @@ except ImportError:
     docker = None
 
 
+# Module-level fixtures shared across test classes
+@pytest.fixture(scope="module")
+def docker_client():
+    """Provide Docker client for container tests."""
+    if not TESTCONTAINERS_AVAILABLE:
+        pytest.skip("testcontainers not available")
+    try:
+        client = docker.from_env()
+        client.ping()
+        return client
+    except Exception as e:
+        pytest.skip(f"Docker not available: {e}")
+
+
+@pytest.fixture(scope="module")
+def runtime_container_image(docker_client):
+    """Build runtime container image for testing."""
+    try:
+        # Build the runtime container from Dockerfile.runtime
+        image, build_logs = docker_client.images.build(
+            path=".",
+            dockerfile="Dockerfile.runtime",
+            tag="burlymcp:test-final-validation",
+            rm=True,
+            forcerm=True
+        )
+        
+        yield image
+        
+        # Cleanup
+        try:
+            docker_client.images.remove(image.id, force=True)
+        except Exception:
+            pass  # Image might already be removed
+            
+    except Exception as e:
+        pytest.skip(f"Runtime container build failed: {e}")
+
+
 @pytest.mark.integration
 @pytest.mark.container
 @pytest.mark.skipif(not TESTCONTAINERS_AVAILABLE, reason="testcontainers not available")
 class TestStandaloneOperation:
     """Test complete standalone operation (Task 10.1)."""
-
-    @pytest.fixture(scope="class")
-    def docker_client(self):
-        """Provide Docker client for container tests."""
-        if not TESTCONTAINERS_AVAILABLE:
-            pytest.skip("testcontainers not available")
-        try:
-            client = docker.from_env()
-            client.ping()
-            return client
-        except Exception as e:
-            pytest.skip(f"Docker not available: {e}")
-
-    @pytest.fixture(scope="class")
-    def runtime_container_image(self, docker_client):
-        """Build runtime container image for testing."""
-        try:
-            # Build the runtime container from Dockerfile.runtime
-            image, build_logs = docker_client.images.build(
-                path=".",
-                dockerfile="Dockerfile.runtime",
-                tag="burlymcp:test-final-validation",
-                rm=True,
-                forcerm=True
-            )
-            
-            yield image
-            
-            # Cleanup
-            try:
-                docker_client.images.remove(image.id, force=True)
-            except Exception:
-                pass  # Image might already be removed
-                
-        except Exception as e:
-            pytest.skip(f"Runtime container build failed: {e}")
 
     def test_container_starts_within_30_seconds(self, docker_client, runtime_container_image):
         """Test container starts and responds to health checks within 30 seconds."""
