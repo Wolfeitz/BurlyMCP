@@ -1,0 +1,56 @@
+# EXAMPLE ONLY - Docker Compose Override for Development
+# 
+# REFERENCE ONLY. The authoritative interface is the container (port 9400, /health, /mcp).
+# This override file provides development-friendly overrides for the main configuration.
+# 
+# EXAMPLE ONLY - This is NOT the official deployment method.
+
+services:
+  burly-mcp:
+    # Override image for local development build
+    # build:
+    #   context: ../../
+    #   dockerfile: Dockerfile.runtime
+    
+    # Development environment variables
+    environment:
+      - LOG_LEVEL=DEBUG
+      - AUDIT_ENABLED=false
+      - PYTHONDONTWRITEBYTECODE=0  # Allow .pyc files for faster imports
+    
+    # Development volume mounts (for local development)
+    volumes:
+      # Mount source code for live editing (if building locally)
+      # - ../../src:/app/src:rw
+      
+      # Keep other volumes from main config
+      - ./logs:/var/log/agentops:rw
+      - ./blog/stage:/app/data/blog/stage:rw
+      - ./blog/publish:/app/data/blog/publish:rw
+      
+      # Optional: Enable Docker socket for development
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+    
+    # Remove read-only constraint for development
+    read_only: false
+    
+    # Remove secrets requirement for development
+    # secrets: []
+    
+    # More relaxed security for development
+    security_opt:
+      - no-new-privileges:false
+    
+    # Allow more capabilities for development debugging
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - SYS_PTRACE  # For debugging
+    
+    # Faster health check for development
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      start_period: 5s

@@ -88,16 +88,16 @@ class TestLoadConfiguration:
         with patch.dict(os.environ, {}, clear=True):
             config = load_configuration()
 
-            assert config["policy_file"] == "config/policy/tools.yaml"
+            assert config["policy_file"] == "/app/BurlyMCP/config/policy/tools.yaml"
             assert config["blog_stage_root"] == "/app/data/blog/stage"
-            assert config["blog_publish_root"] == "/app/data/blog/public"
-            assert config["default_timeout"] == 30
-            assert config["output_limit"] == 10240
+            assert config["blog_publish_root"] == "/app/data/blog/publish"
+            assert config["default_timeout"] == 300
+            assert config["output_limit"] == 1048576
             assert config["audit_log_path"] == "/var/log/agentops/audit.jsonl"
             assert config["notifications_enabled"] is True
             assert config["gotify_url"] == ""
             assert config["gotify_token"] == ""
-            assert config["server_name"] == "burly-mcp"
+            assert config["server_name"] == "burlymcp"
             assert config["server_version"] == "0.1.0"
 
     def test_load_configuration_custom_values(self):
@@ -106,8 +106,8 @@ class TestLoadConfiguration:
             "POLICY_FILE": "/custom/policy.yaml",
             "BLOG_STAGE_ROOT": "/custom/stage",
             "BLOG_PUBLISH_ROOT": "/custom/public",
-            "DEFAULT_TIMEOUT_SEC": "60",
-            "OUTPUT_TRUNCATE_LIMIT": "20480",
+            "MAX_EXECUTION_TIME": "60",
+            "MAX_OUTPUT_SIZE": "20480",
             "AUDIT_LOG_PATH": "/custom/audit.log",
             "NOTIFICATIONS_ENABLED": "false",
             "GOTIFY_URL": "https://gotify.example.com",
@@ -359,8 +359,14 @@ class TestSetupSignalHandlers:
 class TestValidateEnvironment:
     """Test environment validation."""
 
-    def test_validate_environment_success(self):
+    @patch('burly_mcp.config.Config')
+    def test_validate_environment_success(self, mock_config_class):
         """Test successful environment validation."""
+        # Mock the Config class to return a config object with no validation errors
+        mock_config = Mock()
+        mock_config.validate.return_value = []  # No errors
+        mock_config_class.load_runtime_config.return_value = mock_config
+        
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = Path(temp_dir) / "policy.yaml"
             policy_file.write_text("test: policy")
@@ -387,8 +393,14 @@ class TestValidateEnvironment:
             assert result is True
             logger.info.assert_called_once_with("Environment validation passed")
 
-    def test_validate_environment_missing_policy(self):
+    @patch('burly_mcp.config.Config')
+    def test_validate_environment_missing_policy(self, mock_config_class):
         """Test environment validation with missing policy file."""
+        # Mock the Config class to return validation errors
+        mock_config = Mock()
+        mock_config.validate.return_value = ["Policy file not found: /nonexistent/policy.yaml"]
+        mock_config_class.load_runtime_config.return_value = mock_config
+        
         config = {
             "policy_file": "/nonexistent/policy.yaml",
             "blog_stage_root": "",
@@ -403,8 +415,14 @@ class TestValidateEnvironment:
         logger.error.assert_any_call("Environment validation failed:")
         logger.error.assert_any_call("  - Policy file not found: /nonexistent/policy.yaml")
 
-    def test_validate_environment_directory_permissions(self):
+    @patch('burly_mcp.config.Config')
+    def test_validate_environment_directory_permissions(self, mock_config_class):
         """Test environment validation with directory permission issues."""
+        # Mock the Config class to return directory permission errors
+        mock_config = Mock()
+        mock_config.validate.return_value = ["Cannot create directory /root/restricted: Access denied"]
+        mock_config_class.load_runtime_config.return_value = mock_config
+        
         with tempfile.TemporaryDirectory() as temp_dir:
             policy_file = Path(temp_dir) / "policy.yaml"
             policy_file.write_text("test: policy")
@@ -417,11 +435,10 @@ class TestValidateEnvironment:
             }
             logger = Mock()
 
-            with patch("os.makedirs", side_effect=PermissionError("Access denied")):
-                result = validate_environment(config, logger)
+            result = validate_environment(config, logger)
 
-                assert result is False
-                logger.error.assert_any_call("Environment validation failed:")
+            assert result is False
+            logger.error.assert_any_call("Environment validation failed:")
 
 
 class TestMain:

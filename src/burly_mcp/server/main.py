@@ -108,38 +108,27 @@ def load_configuration() -> dict[str, Any]:
     """
     Load configuration from environment variables.
 
-    Loads all configuration settings with appropriate defaults
+    Uses the centralized Config class with container-internal defaults
     and validation. Logs configuration status for debugging.
 
     Returns:
         Dictionary containing all configuration settings
     """
-    config = {
-        # Policy configuration
-        "policy_file": os.environ.get("POLICY_FILE", "config/policy/tools.yaml"),
-        # Security configuration
-        "blog_stage_root": os.environ.get("BLOG_STAGE_ROOT", "/app/data/blog/stage"),
-        "blog_publish_root": os.environ.get(
-            "BLOG_PUBLISH_ROOT", "/app/data/blog/public"
-        ),
-        # Resource limits
-        "default_timeout": int(os.environ.get("DEFAULT_TIMEOUT_SEC", "30")),
-        "output_limit": int(os.environ.get("OUTPUT_TRUNCATE_LIMIT", "10240")),
-        # Audit configuration
-        "audit_log_path": os.environ.get(
-            "AUDIT_LOG_PATH", "/var/log/agentops/audit.jsonl"
-        ),
-        # Notification configuration
-        "notifications_enabled": os.environ.get("NOTIFICATIONS_ENABLED", "true").lower()
-        in ["true", "1", "yes"],
-        "gotify_url": os.environ.get("GOTIFY_URL", ""),
-        "gotify_token": os.environ.get("GOTIFY_TOKEN", ""),
-        # Server configuration
-        "server_name": os.environ.get("SERVER_NAME", "burly-mcp"),
-        "server_version": os.environ.get("SERVER_VERSION", "0.1.0"),
-    }
+    from ..config import Config
+    
+    # Load configuration using the centralized Config class
+    config_obj = Config.load_runtime_config()
+    
+    # Convert to dictionary for backward compatibility
+    config_dict = config_obj.to_dict()
+    
+    # Add some additional derived values for backward compatibility
+    config_dict.update({
+        "default_timeout": config_obj.max_execution_time,
+        "output_limit": config_obj.max_output_size,
+    })
 
-    return config
+    return config_dict
 
 
 def initialize_policy_engine(
@@ -289,35 +278,11 @@ def validate_environment(config: dict[str, Any], logger: logging.Logger) -> bool
     Returns:
         True if environment is valid, False otherwise
     """
-    validation_errors = []
-
-    # Check policy file exists
-    if not os.path.exists(config["policy_file"]):
-        validation_errors.append(f"Policy file not found: {config['policy_file']}")
-
-    # Check directory permissions for blog operations
-    for dir_key in ["blog_stage_root", "blog_publish_root"]:
-        dir_path = config[dir_key]
-        if dir_path:
-            try:
-                os.makedirs(dir_path, exist_ok=True)
-                if not os.access(dir_path, os.R_OK):
-                    validation_errors.append(f"Directory not readable: {dir_path}")
-                if dir_key == "blog_publish_root" and not os.access(dir_path, os.W_OK):
-                    validation_errors.append(
-                        f"Publish directory not writable: {dir_path}"
-                    )
-            except OSError as e:
-                validation_errors.append(f"Cannot access {dir_key} ({dir_path}): {e}")
-
-    # Check audit log directory
-    audit_dir = os.path.dirname(config["audit_log_path"])
-    try:
-        os.makedirs(audit_dir, exist_ok=True)
-        if not os.access(audit_dir, os.W_OK):
-            validation_errors.append(f"Audit log directory not writable: {audit_dir}")
-    except OSError as e:
-        validation_errors.append(f"Cannot access audit log directory: {e}")
+    from ..config import Config
+    
+    # Use the centralized Config validation
+    config_obj = Config.load_runtime_config()
+    validation_errors = config_obj.validate()
 
     # Log validation results
     if validation_errors:

@@ -36,7 +36,7 @@ Successfully implemented comprehensive test coverage reporting and validation sy
 
 **Files Needing Attention**:
 - `tools/registry.py`: 12.12%
-- `server/main.py`: 14.56%
+- `src/burly_mcp/server/main.py`: 14.56%
 - `policy/engine.py`: 24.47%
 - `resource_limits.py`: 27.49%
 - `audit.py`: 27.82%

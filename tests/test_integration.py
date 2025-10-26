@@ -800,6 +800,11 @@ class TestGotifyIntegration:
         """Test gotify_ping with missing configuration."""
         # Execute gotify_ping without environment variables
         with patch.dict(os.environ, {}, clear=True):
+            # Clear feature detector cache to ensure fresh configuration check
+            from burly_mcp.feature_detection import get_feature_detector
+            feature_detector = get_feature_detector()
+            feature_detector.clear_cache()
+            
             result = self.registry.execute_tool(
                 "gotify_ping", {"message": "Test notification"}
             )
@@ -829,6 +834,11 @@ class TestGotifyIntegration:
             os.environ,
             {"GOTIFY_URL": "http://localhost:8080", "GOTIFY_TOKEN": "test_token"},
         ):
+            # Clear feature detector cache to ensure fresh configuration check
+            from burly_mcp.feature_detection import get_feature_detector
+            feature_detector = get_feature_detector()
+            feature_detector.clear_cache()
+            
             # Execute gotify_ping tool with custom priority
             result = self.registry.execute_tool(
                 "gotify_ping", {"message": "High priority notification", "priority": 8}

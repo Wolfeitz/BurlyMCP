@@ -208,9 +208,9 @@ print("✅ Package import successful")
         """Validate Docker build process."""
         print("🐳 Validating Docker build...")
         
-        dockerfile_path = self.project_root / "Dockerfile"
+        dockerfile_path = self.project_root / "Dockerfile.runtime"
         if not dockerfile_path.exists():
-            return False, "Dockerfile not found"
+            return False, "Dockerfile.runtime not found"
         
         try:
             # Build Docker image

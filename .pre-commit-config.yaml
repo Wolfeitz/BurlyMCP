@@ -1,0 +1,58 @@
+# Pre-commit hooks configuration
+# Install with: pip install pre-commit && pre-commit install
+
+repos:
+  # YAML and JSON validation
+  - repo: local
+    hooks:
+      - id: yaml-json-validator
+        name: YAML/JSON Validator
+        entry: python3 scripts/validate_yaml_json.py
+        language: system
+        files: \.(yml|yaml|json|toml)$
+        pass_filenames: true
+        
+  # Built-in YAML validation (backup)
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-yaml
+        name: Check YAML syntax
+        args: [--allow-multiple-documents]
+      - id: check-json
+        name: Check JSON syntax
+      - id: pretty-format-json
+        name: Format JSON files
+        args: [--autofix, --indent=2]
+        
+  # GitHub Actions validation
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.27.3
+    hooks:
+      - id: check-github-workflows
+        name: Validate GitHub Actions workflows
+        
+  # Additional security and quality checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: detect-private-key
+        
+  # Python-specific (if applicable)
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        files: \.py$
+        
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        files: \.py$
+        args: [--max-line-length=88, --extend-ignore=E203,W503]

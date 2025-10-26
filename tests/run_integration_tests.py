@@ -35,6 +35,11 @@ def check_prerequisites():
     except ImportError:
         issues.append("testcontainers not installed")
 
+    try:
+        import requests
+    except ImportError:
+        issues.append("requests not installed (needed for HTTP bridge testing)")
+
     # Check if Burly MCP is available
     try:
         result = subprocess.run(
@@ -50,8 +55,43 @@ def check_prerequisites():
     return issues
 
 
+def validate_test_execution_environment():
+    """Validate that the test execution environment is properly set up."""
+    issues = []
+    
+    # Check for HTTP bridge dependencies
+    try:
+        import fastapi
+        import uvicorn
+    except ImportError:
+        issues.append("HTTP bridge dependencies not available (fastapi, uvicorn)")
+    
+    # Check for testcontainers
+    try:
+        import testcontainers
+    except ImportError:
+        issues.append("testcontainers not available for container testing")
+    
+    # Check for requests
+    try:
+        import requests
+    except ImportError:
+        issues.append("requests library not available for HTTP testing")
+    
+    return issues
+
+
 def run_integration_tests(args):
     """Run integration tests with specified configuration."""
+    # Validate environment for new test categories
+    if args.only_http or args.include_container:
+        env_issues = validate_test_execution_environment()
+        if env_issues:
+            print("Environment validation issues:")
+            for issue in env_issues:
+                print(f"  - {issue}")
+            print("\nSome tests may be skipped due to missing dependencies.")
+    
     # Base pytest command
     cmd = [
         sys.executable,
@@ -81,6 +121,10 @@ def run_integration_tests(args):
         markers.append("not slow")
     if args.only_mcp:
         markers.append("mcp")
+    if args.only_http:
+        markers.append("http")
+    if args.include_container:
+        markers.append("container")
 
     if markers:
         cmd.extend(["-m", " and ".join(markers)])
@@ -133,10 +177,23 @@ Examples:
   %(prog)s --no-docker              # Skip Docker tests
   %(prog)s --no-slow                # Skip slow tests
   %(prog)s --only-mcp               # Run only MCP protocol tests
+  %(prog)s --only-http              # Run only HTTP bridge tests
+  %(prog)s --include-container      # Include container runtime tests
   %(prog)s --test-file test_docker_integration.py  # Run specific file
   %(prog)s --test-function test_container_lifecycle  # Run specific test
   %(prog)s --coverage               # Run with coverage reporting
   %(prog)s --parallel 4             # Run tests in parallel
+
+Test Categories:
+  unit         - Fast, isolated tests with mocks
+  integration  - End-to-end tests with real services
+  docker       - Tests requiring Docker daemon
+  mcp          - MCP protocol functionality tests
+  http         - HTTP bridge endpoint tests
+  api          - HTTP API endpoint tests
+  container    - Runtime container tests
+  security     - Security validation tests
+  slow         - Long-running tests
         """,
     )
 
@@ -154,6 +211,12 @@ Examples:
     )
     parser.add_argument(
         "--only-mcp", action="store_true", help="Run only MCP protocol tests"
+    )
+    parser.add_argument(
+        "--only-http", action="store_true", help="Run only HTTP bridge tests"
+    )
+    parser.add_argument(
+        "--include-container", action="store_true", help="Include container runtime tests"
     )
     parser.add_argument(
         "--test-file",

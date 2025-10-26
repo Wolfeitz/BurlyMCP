@@ -1,0 +1,127 @@
+# EXAMPLE ONLY - BurlyMCP Docker Compose Reference
+# 
+# REFERENCE ONLY. The authoritative interface is the container (port 9400, /health, /mcp).
+# This compose file is provided as a reference deployment example.
+# Production stacks should manage their own compose / k8s / swarm / etc.
+#
+# Security note: mounting /var/run/docker.sock effectively gives BurlyMCP 
+# root-equivalent power on the host. Do not expose that mode on untrusted networks.
+#
+# EXAMPLE ONLY - This is NOT the official deployment method.
+# The official contract is the published container image at ghcr.io/wolfeitz/burlymcp:main
+#
+# Usage:
+#   docker compose up -d              # Start in background
+#   docker compose logs -f burly-mcp  # View logs
+#   docker compose down               # Stop and remove
+
+services:
+  burly-mcp:
+    # Use published container image instead of building from source
+    image: ghcr.io/wolfeitz/burlymcp:main
+    container_name: burly-mcp-example
+    
+    # Security: Run as non-root user
+    user: "1000:1000"
+    
+    # Resource limits for security and stability
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.5'
+    
+    # Environment variables with secure defaults
+    environment:
+      # Optional: Configure blog directories
+      - BLOG_STAGE_ROOT=/app/data/blog/stage
+      - BLOG_PUBLISH_ROOT=/app/data/blog/publish
+      
+      # Optional: Enable notifications
+      # - GOTIFY_URL=https://your-gotify-server.com
+      # - GOTIFY_TOKEN=your-token-here
+      
+      # Optional: Adjust logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      
+      # Optional: Security settings
+      - MAX_OUTPUT_SIZE=${MAX_OUTPUT_SIZE:-1048576}
+      - AUDIT_ENABLED=${AUDIT_ENABLED:-true}
+    
+    # Optional: Docker secrets for production
+    # secrets:
+    #   - gotify_token
+    
+    # Optional volume mounts
+    volumes:
+      # Optional: Persist audit logs
+      - ./logs:/var/log/agentops:rw
+      
+      # Optional: Blog content directories
+      - ./blog/stage:/app/data/blog/stage:ro
+      - ./blog/publish:/app/data/blog/publish:rw
+    
+    # OPTIONAL: to allow container to inspect host Docker,
+    # replace <host_docker_group_gid> with the numeric GID of your docker group:
+    #   getent group docker
+    # group_add:
+    #   - "<host_docker_group_gid>"
+    # volumes:
+    #   - /var/run/docker.sock:/var/run/docker.sock:ro
+    
+    # Expose HTTP port for API access
+    ports:
+      - "9400:9400"
+    
+    # Security constraints
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined  # May be needed for Docker operations
+    
+    # Drop all capabilities and add only what's needed
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN      # For file ownership changes
+      - SETUID     # For user switching if needed
+      - SETGID     # For group switching if needed
+    
+    # Read-only root filesystem for maximum security
+    read_only: true
+    
+    # Temporary filesystems for writable areas
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=100m
+      - /var/tmp:noexec,nosuid,nodev,size=50m
+      - /run:noexec,nosuid,nodev,size=50m
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Health check using HTTP endpoint
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9400/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    
+    # Labels for container management
+    labels:
+      - "com.burly-mcp.service=main"
+      - "com.burly-mcp.version=example"
+
+# Optional: Docker secrets for production deployment
+# secrets:
+#   gotify_token:
+#     external: true
+#     name: burly_mcp_gotify_token
+
+# Minimal/no-privilege run:
+# docker run --rm -p 9400:9400 ghcr.io/wolfeitz/burlymcp:main
+# curl http://127.0.0.1:9400/health
+# 
+# That MUST return status "ok" or "degraded", not crash.

@@ -1,6 +1,6 @@
 name: Legacy Coverage Validation (Deprecated)
 
-on:
+"on":
   workflow_dispatch:  # Manual trigger only
     inputs:
       min_coverage:

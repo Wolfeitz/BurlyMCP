@@ -239,7 +239,7 @@ services:
   burly-mcp:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.runtime
       target: production
     
     # Security: Run as non-root user

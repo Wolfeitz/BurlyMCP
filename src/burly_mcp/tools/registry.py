@@ -40,6 +40,8 @@ from typing import Any
 import yaml
 
 from ..audit import log_tool_execution
+from ..confirmation import validate_confirmation_for_tool
+from ..feature_detection import get_feature_detector, get_degraded_tool_response
 from ..notifications import (
     notify_tool_confirmation,
     notify_tool_failure,
@@ -140,6 +142,40 @@ class ToolRegistry:
             # Send failure notification
             try:
                 notify_tool_failure(tool_name, result.summary, result.exit_code)
+            except Exception as e:
+                logger.warning(f"Notification failed for {tool_name}: {str(e)}")
+
+            return result
+
+        # Check confirmation requirement for mutating operations
+        confirmation_response = validate_confirmation_for_tool(tool_name, args)
+        if confirmation_response is not None:
+            # Return confirmation required response
+            result = ToolResult(
+                success=False,
+                need_confirm=True,
+                summary=confirmation_response["summary"],
+                data=confirmation_response["data"],
+                stdout="",
+                stderr=confirmation_response["error"],
+                exit_code=confirmation_response["metrics"]["exit_code"],
+                elapsed_ms=confirmation_response["metrics"]["elapsed_ms"],
+            )
+
+            # Log the confirmation requirement
+            log_tool_execution(
+                tool_name=tool_name,
+                args=args,
+                mutates=self._tool_mutates(tool_name),
+                requires_confirm=self._tool_requires_confirm(tool_name),
+                status="need_confirm",
+                exit_code=result.exit_code,
+                elapsed_ms=result.elapsed_ms,
+            )
+
+            # Send confirmation notification
+            try:
+                notify_tool_confirmation(tool_name, result.summary)
             except Exception as e:
                 logger.warning(f"Notification failed for {tool_name}: {str(e)}")
 
@@ -268,6 +304,24 @@ class ToolRegistry:
                 stderr="Docker operations disabled for testing",
                 exit_code=1,
                 elapsed_ms=0,
+            )
+        
+        # Check Docker feature availability using feature detection framework
+        feature_detector = get_feature_detector()
+        docker_status = feature_detector.check_docker_availability()
+        
+        if not docker_status.available:
+            # Generate degraded response with helpful suggestion
+            degraded_response = get_degraded_tool_response("docker_ps", "docker", docker_status)
+            return ToolResult(
+                success=False,
+                need_confirm=False,
+                summary=degraded_response["summary"],
+                data=degraded_response["data"],
+                stdout="",
+                stderr=degraded_response["error"],
+                exit_code=degraded_response["metrics"]["exit_code"],
+                elapsed_ms=degraded_response["metrics"]["elapsed_ms"],
             )
 
         try:
@@ -542,6 +596,24 @@ class ToolRegistry:
         file access and YAML parsing, ensuring blog posts meet
         publishing requirements.
         """
+        # Check blog directories feature availability
+        feature_detector = get_feature_detector()
+        blog_status = feature_detector.check_blog_directories_accessible()
+        
+        if not blog_status.available:
+            # Generate degraded response with helpful suggestion
+            degraded_response = get_degraded_tool_response("blog_stage_markdown", "blog_directories", blog_status)
+            return ToolResult(
+                success=False,
+                need_confirm=False,
+                summary=degraded_response["summary"],
+                data=degraded_response["data"],
+                stdout="",
+                stderr=degraded_response["error"],
+                exit_code=degraded_response["metrics"]["exit_code"],
+                elapsed_ms=degraded_response["metrics"]["elapsed_ms"],
+            )
+        
         file_path = args.get("file_path", "")
 
         if not file_path:
@@ -734,6 +806,24 @@ class ToolRegistry:
         safe file operations and path validation.
         """
         try:
+            # Check blog directories feature availability
+            feature_detector = get_feature_detector()
+            blog_status = feature_detector.check_blog_directories_accessible()
+            
+            if not blog_status.available:
+                # Generate degraded response with helpful suggestion
+                degraded_response = get_degraded_tool_response("blog_publish_static", "blog_directories", blog_status)
+                return ToolResult(
+                    success=False,
+                    need_confirm=False,
+                    summary=degraded_response["summary"],
+                    data=degraded_response["data"],
+                    stdout="",
+                    stderr=degraded_response["error"],
+                    exit_code=degraded_response["metrics"]["exit_code"],
+                    elapsed_ms=degraded_response["metrics"]["elapsed_ms"],
+                )
+            
             # Get environment variables for directory paths
             blog_stage_root = os.environ.get("BLOG_STAGE_ROOT")
             blog_publish_root = os.environ.get("BLOG_PUBLISH_ROOT")
@@ -786,25 +876,7 @@ class ToolRegistry:
                     # Skip files outside staging directory
                     continue
 
-            # Check if confirmation was provided
-            if not args.get("_confirm", False):
-                return ToolResult(
-                    success=False,
-                    need_confirm=True,
-                    summary=f"Blog publishing requires confirmation - {len(relative_files)} file(s) ready to publish",
-                    data={
-                        "files_to_publish": relative_files,
-                        "stage_root": blog_stage_root,
-                        "publish_root": blog_publish_root,
-                        "pattern": file_pattern,
-                    },
-                    stdout="Files ready to publish:\n" + "\n".join(relative_files),
-                    stderr="",
-                    exit_code=0,
-                    elapsed_ms=0,
-                )
-
-            # Confirmation provided - proceed with publishing
+            # Confirmation already validated by central confirmation system - proceed with publishing
             if not files_to_publish:
                 return ToolResult(
                     success=True,
@@ -922,35 +994,29 @@ class ToolRegistry:
                 exit_code=1,
                 elapsed_ms=0,
             )
+        
+        # Check notifications feature availability using feature detection framework
+        feature_detector = get_feature_detector()
+        notifications_status = feature_detector.check_notifications_configured()
+        
+        if not notifications_status.available:
+            # Generate degraded response with helpful suggestion
+            degraded_response = get_degraded_tool_response("gotify_ping", "notifications", notifications_status)
+            return ToolResult(
+                success=False,
+                need_confirm=False,
+                summary=degraded_response["summary"],
+                data=degraded_response["data"],
+                stdout="",
+                stderr=degraded_response["error"],
+                exit_code=degraded_response["metrics"]["exit_code"],
+                elapsed_ms=degraded_response["metrics"]["elapsed_ms"],
+            )
 
         try:
-            # Get Gotify configuration from environment
+            # Get Gotify configuration from environment (already validated by feature detection)
             gotify_url = os.environ.get("GOTIFY_URL", "")
             gotify_token = os.environ.get("GOTIFY_TOKEN", "")
-
-            if not gotify_url:
-                return ToolResult(
-                    success=False,
-                    need_confirm=False,
-                    summary="Gotify URL not configured - set GOTIFY_URL environment variable",
-                    data={"error": "missing_url"},
-                    stdout="",
-                    stderr="GOTIFY_URL environment variable not set",
-                    exit_code=1,
-                    elapsed_ms=0,
-                )
-
-            if not gotify_token:
-                return ToolResult(
-                    success=False,
-                    need_confirm=False,
-                    summary="Gotify token not configured - set GOTIFY_TOKEN environment variable",
-                    data={"error": "missing_token"},
-                    stdout="",
-                    stderr="GOTIFY_TOKEN environment variable not set",
-                    exit_code=1,
-                    elapsed_ms=0,
-                )
 
             # Get optional message parameters
             message = args.get("message", "Test notification from Burly MCP")
