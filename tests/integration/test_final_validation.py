@@ -90,15 +90,17 @@ class TestStandaloneOperation:
                 }
             )
             
-            # Wait for container to be running
-            timeout = 30
+            # Wait for container to be running with CI-aware timeout
+            max_startup_time = 45 if os.getenv('CI') else 30
+            timeout = max_startup_time
+            
             while time.time() - start_time < timeout:
                 container.reload()
                 if container.status == "running":
                     break
                 time.sleep(0.5)
             else:
-                logs = container.logs().decode('utf-8')
+                logs = container.logs(stdout=True, stderr=True).decode('utf-8')
                 pytest.fail(f"Container did not start within {timeout}s. Logs: {logs}")
             
             # Test health endpoint availability within startup time
@@ -115,10 +117,9 @@ class TestStandaloneOperation:
             
             startup_time = time.time() - start_time
             
-            # Validate startup time requirement (allow extra time in CI environments)
-            max_startup_time = 45 if os.getenv('CI') else 30
+            # Validate startup time requirement
             assert startup_time < max_startup_time, f"Container took {startup_time:.1f}s to start (requirement: <{max_startup_time}s)"
-            assert health_available, "Health endpoint not available within 30 seconds"
+            assert health_available, f"Health endpoint not available within {max_startup_time} seconds"
             
             # Validate health response format
             response = requests.get("http://localhost:9400/health", timeout=5)
@@ -307,7 +308,7 @@ class TestStandaloneOperation:
                     pass  # Health endpoint might not be available
             
             # Check container logs for error messages
-            logs = container.logs().decode('utf-8')
+            logs = container.logs(stdout=True, stderr=True).decode('utf-8')
             assert len(logs) > 0, "No startup logs found"
             
             # Should contain error information about missing policy
@@ -372,7 +373,7 @@ class TestStandaloneOperation:
             assert container.status == "running"
             
             # Check startup logs contain structured summary
-            logs = container.logs().decode('utf-8')
+            logs = container.logs(stdout=True, stderr=True).decode('utf-8')
             
             # Should contain startup summary
             assert "Startup Summary" in logs or "startup" in logs.lower()
@@ -454,7 +455,7 @@ class TestAPIStabilityAndBackwardCompatibility:
                     pass
                 time.sleep(1)
             else:
-                logs = container.logs().decode('utf-8')
+                logs = container.logs(stdout=True, stderr=True).decode('utf-8')
                 pytest.skip(f"Container not ready for API testing. Logs: {logs}")
             
             yield "http://localhost:9400"
@@ -744,7 +745,7 @@ class TestPublicDeploymentReadiness:
             container.reload()
             
             if container.status != "running":
-                logs = container.logs().decode('utf-8')
+                logs = container.logs(stdout=True, stderr=True).decode('utf-8')
                 pytest.fail(f"Container failed to start on clean host. Logs: {logs}")
             
             # Test basic functionality
