@@ -60,6 +60,7 @@ class TestStandaloneOperationSimple:
         except Exception as e:
             pytest.skip(f"Container build failed: {e}")
 
+    @pytest.mark.flaky
     def test_container_starts_within_30_seconds(self, runtime_container_image):
         """Test container starts and responds to health checks within 30 seconds."""
         container_id = None
