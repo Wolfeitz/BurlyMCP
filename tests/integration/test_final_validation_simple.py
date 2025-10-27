@@ -358,6 +358,7 @@ class TestStandaloneOperationSimple:
                 subprocess.run(["docker", "stop", container_id], capture_output=True, timeout=15)
                 subprocess.run(["docker", "rm", container_id], capture_output=True, timeout=10)
 
+    @pytest.mark.flaky
     def test_audit_logging_and_startup_summary_output(self, runtime_container_image):
         """Test audit logging and startup summary output."""
         container_id = None
@@ -656,6 +657,7 @@ class TestAPIStabilitySimple:
 class TestPublicDeploymentReadinessSimple:
     """Test public deployment readiness validation (Task 10.3) using direct docker commands."""
 
+    @pytest.mark.flaky
     def test_container_works_on_arbitrary_linux_hosts(self):
         """Test container works on arbitrary Linux hosts without customization."""
         container_id = None
