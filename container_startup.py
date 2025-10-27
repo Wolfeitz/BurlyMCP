@@ -216,6 +216,32 @@ def main():
         # Step 3: Start HTTP bridge
         http_bridge_process = start_http_bridge()
         
+        # Step 4: Verify HTTP bridge is responding
+        logger.info("Verifying HTTP bridge startup...")
+        bridge_ready = False
+        for attempt in range(10):  # Try for 10 seconds
+            time.sleep(1)
+            if http_bridge_process.poll() is not None:
+                logger.error(f"HTTP bridge process exited with code {http_bridge_process.returncode}")
+                break
+            
+            # Try to connect to health endpoint
+            try:
+                import requests
+                response = requests.get("http://localhost:9400/health", timeout=2)
+                if response.status_code == 200:
+                    bridge_ready = True
+                    logger.info("HTTP bridge health check successful")
+                    break
+            except ImportError:
+                logger.debug("requests not available for health check")
+                break  # Skip health check if requests not available
+            except Exception as e:
+                logger.debug(f"Health check attempt {attempt + 1}: {e}")
+        
+        if not bridge_ready:
+            logger.warning("HTTP bridge may not be fully ready, but continuing...")
+        
         logger.info("Container startup complete - HTTP bridge running")
         
         # Step 4: Wait for HTTP bridge process

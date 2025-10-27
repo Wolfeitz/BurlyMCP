@@ -282,7 +282,9 @@ def mock_audit_and_notifications(monkeypatch):
 
     # Try to mock audit logging - only if module exists
     try:
+        # Mock the imported function in the registry module
         monkeypatch.setattr("burly_mcp.tools.registry.log_tool_execution", mock_audit)
+        # Also mock the audit logger itself
         monkeypatch.setattr("burly_mcp.audit.get_audit_logger", Mock())
     except (ImportError, AttributeError):
         pass  # Module not available, skip mocking

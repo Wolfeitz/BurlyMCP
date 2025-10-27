@@ -875,6 +875,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     if request.url.path == "/mcp":
         # Convert validation errors to JSON-serializable format
         validation_errors = []
+        error_message = "Invalid request format or parameters"
+        
         for error in exc.errors():
             serializable_error = {
                 "type": error.get("type", "unknown"),
@@ -883,11 +885,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 "input": str(error.get("input", ""))
             }
             validation_errors.append(serializable_error)
+            
+            # Check if this is a method validation error and provide specific message
+            if ("method" in error.get("loc", []) and 
+                "Method must be one of" in error.get("msg", "")):
+                error_message = error.get("msg", "Invalid method")
         
         error_response = {
             "ok": False,
             "summary": "Request validation failed",
-            "error": "Invalid request format or parameters",
+            "error": error_message,
             "data": {
                 "validation_errors": validation_errors,
                 "suggestion": "Check request format and parameter types"

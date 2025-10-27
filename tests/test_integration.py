@@ -953,17 +953,17 @@ class TestToolRegistryIntegration:
         # Verify successful execution
         assert result.success is True
 
-        # Verify audit logging was called (mocked in setup)
-        mock_audit_and_notifications["audit"].assert_called_once()
-        audit_call = mock_audit_and_notifications["audit"].call_args[1]
+        # Verify audit logging was called (using class's own mock)
+        self.mock_audit.assert_called_once()
+        audit_call = self.mock_audit.call_args[1]
         assert audit_call["tool_name"] == "docker_ps"
         assert audit_call["status"] == "ok"
         assert audit_call["mutates"] is False
         assert audit_call["requires_confirm"] is False
 
-        # Verify notification was sent (mocked in setup)
-        mock_audit_and_notifications["notify_success"].assert_called_once()
-        notify_call = mock_audit_and_notifications["notify_success"].call_args[0]
+        # Verify notification was sent (using class's own mock)
+        self.mock_notify_success.assert_called_once()
+        notify_call = self.mock_notify_success.call_args[0]
         assert notify_call[0] == "docker_ps"  # tool_name
         assert "Found 0 running containers" in notify_call[1]  # summary
 
@@ -993,16 +993,16 @@ class TestToolRegistryIntegration:
         # Verify failed execution
         assert result.success is False
 
-        # Verify audit logging was called with failure status (mocked in setup)
-        mock_audit_and_notifications["audit"].assert_called_once()
-        audit_call = mock_audit_and_notifications["audit"].call_args[1]
+        # Verify audit logging was called with failure status (using class's own mock)
+        self.mock_audit.assert_called_once()
+        audit_call = self.mock_audit.call_args[1]
         assert audit_call["tool_name"] == "docker_ps"
         assert audit_call["status"] == "fail"
         assert audit_call["exit_code"] == 1
 
-        # Verify failure notification was sent (mocked in setup)
-        mock_audit_and_notifications["notify_failure"].assert_called_once()
-        notify_call = mock_audit_and_notifications["notify_failure"].call_args[0]
+        # Verify failure notification was sent (using class's own mock)
+        self.mock_notify_failure.assert_called_once()
+        notify_call = self.mock_notify_failure.call_args[0]
         assert notify_call[0] == "docker_ps"  # tool_name
         assert notify_call[2] == 1  # exit_code
 
