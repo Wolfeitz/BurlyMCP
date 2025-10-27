@@ -314,6 +314,9 @@ def sanitize_environment_for_subprocess() -> Dict[str, str]:
     for var in sensitive_vars:
         env.pop(var, None)
     
+    # Add single-request mode for HTTP bridge subprocess calls
+    env["MCP_SINGLE_REQUEST"] = "true"
+    
     return env
 
 
@@ -565,19 +568,29 @@ async def test_mcp_engine() -> Dict[str, Any]:
         Dictionary with test results
     """
     try:
-        # Simple list_tools request to test engine
+        # Simple list_tools request to test engine with short timeout for health checks
         test_request = {
             "id": "health-check",
             "method": "list_tools",
             "params": {}
         }
         
-        response = await forward_to_mcp_engine(test_request)
+        # Use asyncio.wait_for to add a shorter timeout for health checks
+        response = await asyncio.wait_for(
+            forward_to_mcp_engine(test_request),
+            timeout=10.0  # 10 second timeout for health checks
+        )
         return {
             "ok": response.get("ok", False),
             "tools_count": len(response.get("data", {}).get("tools", [])) if response.get("data") else 0
         }
         
+    except asyncio.TimeoutError:
+        return {
+            "ok": False,
+            "error": "MCP engine health check timed out",
+            "tools_count": 0
+        }
     except Exception as e:
         return {
             "ok": False,
@@ -617,9 +630,18 @@ async def health_check():
     config = load_runtime_config()
     
     # Check MCP engine health with quick test
-    mcp_test = await test_mcp_engine()
-    mcp_healthy = mcp_test.get("ok", False)
-    tools_count = mcp_test.get("tools_count", 0)
+    try:
+        mcp_test = await asyncio.wait_for(test_mcp_engine(), timeout=15.0)
+        mcp_healthy = mcp_test.get("ok", False)
+        tools_count = mcp_test.get("tools_count", 0)
+    except asyncio.TimeoutError:
+        logger.warning("MCP engine health check timed out after 15 seconds")
+        mcp_healthy = False
+        tools_count = 0
+    except Exception as e:
+        logger.warning(f"MCP engine health check failed: {e}")
+        mcp_healthy = False
+        tools_count = 0
     
     # Check system feature detection
     docker_available = check_docker_availability()

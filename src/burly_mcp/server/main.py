@@ -361,7 +361,12 @@ def main() -> None:
         _logger.info("Server ready - waiting for MCP requests on stdin")
 
         # Start the MCP protocol loop
-        _mcp_handler.run_protocol_loop()
+        # Check if we're running in single-request mode (for HTTP bridge)
+        single_request_mode = os.environ.get("MCP_SINGLE_REQUEST", "false").lower() in ["true", "1", "yes"]
+        if single_request_mode:
+            _logger.info("Running in single-request mode")
+        
+        _mcp_handler.run_protocol_loop(single_request=single_request_mode)
 
     except KeyboardInterrupt:
         if _logger:

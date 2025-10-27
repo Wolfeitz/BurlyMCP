@@ -650,12 +650,15 @@ class MCPProtocolHandler:
 
             return response
 
-    def run_protocol_loop(self) -> None:
+    def run_protocol_loop(self, single_request: bool = False) -> None:
         """
         Run the main MCP protocol loop.
 
         Continuously reads requests from stdin, processes them, and writes
         responses to stdout until EOF or a critical error occurs.
+
+        Args:
+            single_request: If True, exit after processing one request (for HTTP bridge)
 
         This method implements the core MCP server behavior with comprehensive
         error handling and graceful shutdown.
@@ -694,6 +697,11 @@ class MCPProtocolHandler:
                     logger.debug(
                         f"Request completed in {response.metrics.get('elapsed_ms', 0) if response.metrics else 0}ms"
                     )
+
+                    # Exit after one request if in single-request mode
+                    if single_request:
+                        logger.info("Single request completed, exiting")
+                        break
 
                 except ValueError as e:
                     # Request parsing or validation error

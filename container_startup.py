@@ -34,14 +34,18 @@ def signal_handler(signum, frame):
         logger.info("Terminating HTTP bridge process...")
         http_bridge_process.terminate()
         
-        # Wait up to 10 seconds for graceful shutdown
+        # Wait up to 8 seconds for graceful shutdown
         try:
-            http_bridge_process.wait(timeout=10)
+            http_bridge_process.wait(timeout=8)
             logger.info("HTTP bridge shut down gracefully")
         except subprocess.TimeoutExpired:
-            logger.warning("HTTP bridge did not shut down gracefully, forcing termination")
+            logger.warning("HTTP bridge did not shut down gracefully, sending SIGKILL")
             http_bridge_process.kill()
-            http_bridge_process.wait()
+            try:
+                http_bridge_process.wait(timeout=2)
+                logger.info("HTTP bridge terminated with SIGKILL")
+            except subprocess.TimeoutExpired:
+                logger.error("HTTP bridge did not respond to SIGKILL")
     
     logger.info("Container shutdown complete")
     sys.exit(0)
@@ -172,6 +176,14 @@ def start_http_bridge():
         )
         
         logger.info(f"HTTP bridge started with PID {process.pid}")
+        
+        # Wait a moment for the HTTP bridge to start up
+        time.sleep(2)
+        
+        # Verify the process is still running
+        if process.poll() is not None:
+            raise RuntimeError(f"HTTP bridge process exited immediately with code {process.returncode}")
+        
         return process
         
     except Exception as e:
