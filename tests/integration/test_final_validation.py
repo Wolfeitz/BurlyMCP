@@ -866,9 +866,9 @@ class TestPublicDeploymentReadiness:
             for compose_file in examples_dir.glob("*.yml"):
                 compose_content = compose_file.read_text()
                 
-                # Only main compose files should have parameterized examples
-                # Override files are for development and don't need placeholders
-                if "override" not in compose_file.name:
+                # Only the main compose file should have parameterized examples
+                # Override and minimal files are for specific use cases and don't need placeholders
+                if compose_file.name == "docker-compose.yml":
                     # Should contain parameterized examples
                     assert "<host_docker_group_gid>" in compose_content or "# replace" in compose_content.lower()
                 

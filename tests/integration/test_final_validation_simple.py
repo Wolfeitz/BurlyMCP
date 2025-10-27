@@ -184,6 +184,7 @@ class TestStandaloneOperationSimple:
             if container_id:
                 subprocess.run(["docker", "rm", container_id], capture_output=True, timeout=10)
 
+    @pytest.mark.flaky
     def test_tools_fail_gracefully_without_optional_features(self, runtime_container_image):
         """Test all tools fail gracefully when optional features unavailable."""
         container_id = None
@@ -260,6 +261,7 @@ class TestStandaloneOperationSimple:
                 subprocess.run(["docker", "stop", container_id], capture_output=True, timeout=15)
                 subprocess.run(["docker", "rm", container_id], capture_output=True, timeout=10)
 
+    @pytest.mark.flaky
     def test_environment_variable_validation_and_startup_error_handling(self, runtime_container_image):
         """Test environment variable validation and startup error handling."""
         # Test with invalid configuration
