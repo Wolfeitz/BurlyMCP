@@ -21,7 +21,7 @@ import json
 import logging
 import os
 import socket
-import subprocess
+import subprocess  # nosec B404 - Used for safe Docker version detection only
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -140,8 +140,8 @@ class FeatureDetector:
             
             # Check if Docker CLI is available
             try:
-                result = subprocess.run(
-                    ["docker", "--version"],
+                result = subprocess.run([  # nosec
+                    "docker", "--version"],
                     capture_output=True,
                     text=True,
                     timeout=5
@@ -187,8 +187,8 @@ class FeatureDetector:
             
             # Test Docker daemon connectivity with a quick ping
             try:
-                result = subprocess.run(
-                    ["docker", "info", "--format", "{{.ServerVersion}}"],
+                result = subprocess.run([  # nosec
+                    "docker", "info", "--format", "{{.ServerVersion}}"],
                     capture_output=True,
                     text=True,
                     timeout=10

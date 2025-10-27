@@ -66,7 +66,7 @@ class Config:
             # Server configuration
             "server_name": os.environ.get("SERVER_NAME", "burlymcp"),
             "server_version": os.environ.get("SERVER_VERSION", "0.1.0"),
-            "host": os.environ.get("HOST", "0.0.0.0"),
+            "host": os.environ.get("HOST", "0.0.0.0"),  # nosec B104 - Intentional for container deployment
             "port": int(os.environ.get("PORT", "9400")),
             "log_level": os.environ.get("LOG_LEVEL", "INFO"),
         }

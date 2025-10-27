@@ -1,0 +1,10 @@
+
+tools:
+  invalid_schema_tool:
+    description: "Tool with invalid schema"
+    args_schema:
+      type: "invalid_type"  # Invalid JSON Schema type
+    command: ["echo", "test"]
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 10

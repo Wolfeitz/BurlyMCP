@@ -13,6 +13,7 @@ Test Categories:
 - Security violation logging
 """
 
+import json
 import os
 import subprocess
 import time
@@ -795,7 +796,7 @@ class TestHTTPBridgeSecurity:
         data = response.json()
         
         assert data["ok"] is False
-        assert "too large" in data["error"].lower()
+        assert "exceeds maximum size" in data["error"].lower()
 
     def test_http_tool_name_sanitization(self, client):
         """Test tool name sanitization in HTTP requests."""
@@ -889,7 +890,7 @@ class TestHTTPBridgeSecurity:
         data = response.json()
         
         assert data["ok"] is False
-        assert ("too long" in data["error"].lower() or 
+        assert ("exceeds maximum size" in data["error"].lower() or 
                "string" in data["error"].lower())
 
     def test_http_json_injection_protection(self, client):

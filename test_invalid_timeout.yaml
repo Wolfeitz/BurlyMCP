@@ -1,0 +1,10 @@
+
+tools:
+  timeout_tool:
+    description: "Tool with invalid timeout"
+    args_schema:
+      type: "object"
+    command: ["echo", "test"]
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 0  # Should be positive

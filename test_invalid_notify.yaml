@@ -1,0 +1,11 @@
+
+tools:
+  notify_tool:
+    description: "Tool with invalid notify types"
+    args_schema:
+      type: "object"
+    command: ["echo", "test"]
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 30
+    notify: ["invalid_type"]  # Not in valid types

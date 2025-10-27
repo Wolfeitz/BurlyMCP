@@ -5,6 +5,7 @@ These tests focus on the HTTP bridge functionality in isolation,
 using mocks for the MCP engine communication.
 """
 
+import asyncio
 import json
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
@@ -287,13 +288,18 @@ class TestHTTPBridgeEndpoints:
         """Create test client with mocked configuration."""
         return TestClient(app)
 
-    @patch('http_bridge.test_mcp_engine')
+    @patch('http_bridge.test_mcp_engine', new_callable=AsyncMock)
     @patch('http_bridge.check_docker_availability')
     @patch('http_bridge.check_notifications_configured')
     @patch('http_bridge.check_policy_loaded')
     def test_health_endpoint_ok_status(self, mock_policy, mock_notifications, 
                                       mock_docker, mock_mcp_test, client):
         """Test /health endpoint returns ok status when all systems healthy."""
+        # Clear health cache to ensure fresh test
+        import http_bridge
+        http_bridge._health_cache = None
+        http_bridge._health_cache_time = 0
+        
         # Mock all checks to return healthy status
         mock_mcp_test.return_value = {"ok": True, "tools_count": 5}
         mock_docker.return_value = True
@@ -315,10 +321,15 @@ class TestHTTPBridgeEndpoints:
         assert data["strict_security_mode"] is True
         assert "uptime_seconds" in data
 
-    @patch('http_bridge.test_mcp_engine')
+    @patch('http_bridge.test_mcp_engine', new_callable=AsyncMock)
     @patch('http_bridge.check_policy_loaded')
     def test_health_endpoint_degraded_status(self, mock_policy, mock_mcp_test, client):
         """Test /health endpoint returns degraded status when MCP engine fails."""
+        # Clear health cache to ensure fresh test
+        import http_bridge
+        http_bridge._health_cache = None
+        http_bridge._health_cache_time = 0
+        
         # Mock MCP engine failure but policy loaded
         mock_mcp_test.return_value = {"ok": False, "tools_count": 0}
         mock_policy.return_value = True
@@ -331,10 +342,15 @@ class TestHTTPBridgeEndpoints:
         assert data["status"] == "degraded"
         assert data["tools_available"] == 0
 
-    @patch('http_bridge.test_mcp_engine')
+    @patch('http_bridge.test_mcp_engine', new_callable=AsyncMock)
     @patch('http_bridge.check_policy_loaded')
     def test_health_endpoint_error_status(self, mock_policy, mock_mcp_test, client):
         """Test /health endpoint returns error status when both MCP and policy fail."""
+        # Clear health cache to ensure fresh test
+        import http_bridge
+        http_bridge._health_cache = None
+        http_bridge._health_cache_time = 0
+        
         # Mock both MCP engine and policy failure
         mock_mcp_test.return_value = {"ok": False, "tools_count": 0}
         mock_policy.return_value = False
@@ -452,8 +468,11 @@ class TestHTTPBridgeEndpoints:
         
         response = client.post("/mcp", json=request_data)
         
-        # Should return HTTP 422 for validation error (FastAPI default)
-        assert response.status_code == 422
+        # Should return HTTP 200 with error in body (per MCP bridge design)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is False
+        assert "validation" in data["summary"].lower() or "invalid" in data["error"].lower()
 
     def test_mcp_endpoint_invalid_tool_name(self, client):
         """Test /mcp endpoint with invalid tool name."""
@@ -466,8 +485,11 @@ class TestHTTPBridgeEndpoints:
         
         response = client.post("/mcp", json=request_data)
         
-        # Should return HTTP 422 for validation error
-        assert response.status_code == 422
+        # Should return HTTP 200 with error in body (per MCP bridge design)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is False
+        assert "validation" in data["summary"].lower() or "invalid" in data["error"].lower()
 
     def test_mcp_endpoint_oversized_request(self, client):
         """Test /mcp endpoint with oversized request."""
@@ -487,7 +509,7 @@ class TestHTTPBridgeEndpoints:
         data = response.json()
         
         assert data["ok"] is False
-        assert "too large" in data["error"].lower()
+        assert "exceeds maximum size" in data["error"].lower()
 
     @patch('http_bridge.forward_to_mcp_engine')
     def test_mcp_endpoint_always_returns_200(self, mock_forward, client):
@@ -519,6 +541,7 @@ class TestHTTPBridgeEndpoints:
 class TestHTTPBridgeMCPEngineIntegration:
     """Test HTTP bridge integration with MCP engine (mocked)."""
 
+    @pytest.mark.asyncio
     @patch('http_bridge.asyncio.create_subprocess_exec')
     async def test_forward_to_mcp_engine_success(self, mock_subprocess):
         """Test successful communication with MCP engine."""
@@ -544,6 +567,7 @@ class TestHTTPBridgeMCPEngineIntegration:
         assert "metrics" in response
         assert "elapsed_ms" in response["metrics"]
 
+    @pytest.mark.asyncio
     @patch('http_bridge.asyncio.create_subprocess_exec')
     async def test_forward_to_mcp_engine_process_failure(self, mock_subprocess):
         """Test MCP engine process failure."""
@@ -568,6 +592,7 @@ class TestHTTPBridgeMCPEngineIntegration:
         assert "process failed" in response["summary"].lower()
         assert response["metrics"]["exit_code"] == 1
 
+    @pytest.mark.asyncio
     @patch('http_bridge.asyncio.create_subprocess_exec')
     async def test_forward_to_mcp_engine_timeout(self, mock_subprocess):
         """Test MCP engine timeout handling."""
@@ -590,6 +615,7 @@ class TestHTTPBridgeMCPEngineIntegration:
         assert "timeout" in response["summary"].lower()
         assert response["metrics"]["exit_code"] == 124
 
+    @pytest.mark.asyncio
     @patch('http_bridge.asyncio.create_subprocess_exec')
     async def test_forward_to_mcp_engine_invalid_json(self, mock_subprocess):
         """Test MCP engine invalid JSON response."""
