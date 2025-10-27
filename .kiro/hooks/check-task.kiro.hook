@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Check Task",
+  "description": "Validation-only workflow that runs tests and security scans, shows git status, but performs NO git operations",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*[check-task]*"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Execute the check-task workflow (validation only, NO git operations):\n\n1. **Repository status check:**\n   - Verify we're in a git repository\n   - Run `git fetch --prune origin` to get latest remote info\n   - Show current branch name\n   - Show `git status --porcelain` (staged, unstaged, untracked files)\n   - Show ahead/behind status vs origin using `git rev-list --count --left-right HEAD...@{upstream}` if upstream exists\n\n2. **Test validation:**\n   - Run `npm test` or `pytest -q` if project config detected\n   - If tests fail, report failures and STOP (do not continue)\n   - Show test results summary\n\n3. **Optional security scan:**\n   - If trufflehog/gitleaks/bandit present, run secret/security scan\n   - If critical security issues found, report them and STOP\n   - Show security scan summary\n\n4. **Status report:**\n   - ✅ All checks passed OR ❌ Issues found\n   - Branch status (clean/dirty, ahead/behind)\n   - Test results\n   - Security scan results (if run)\n   - NO staging, committing, pushing, or PR operations\n\n**CRITICAL: This workflow performs ONLY validation and status reporting. It must NOT stage files, create commits, push changes, open PRs, or perform any git write operations.**"
+  }
+}

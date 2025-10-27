@@ -182,7 +182,7 @@ run_with_docker() {
     if ! docker image inspect burly-mcp:latest &> /dev/null; then
         print_status "Building Docker image..."
         cd "$PROJECT_ROOT"
-        docker build -t burly-mcp:latest -f docker/Dockerfile .
+        docker build -t burly-mcp:latest -f Dockerfile.runtime .
     fi
     
     # Run tests with Docker

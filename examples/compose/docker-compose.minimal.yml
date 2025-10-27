@@ -1,0 +1,31 @@
+# EXAMPLE ONLY - Minimal BurlyMCP Docker Compose
+# 
+# REFERENCE ONLY. The authoritative interface is the container (port 9400, /health, /mcp).
+# This is the minimal example showing basic container deployment.
+# 
+# Security note: mounting /var/run/docker.sock effectively gives BurlyMCP 
+# root-equivalent power on the host. Do not expose that mode on untrusted networks.
+#
+# EXAMPLE ONLY - This is NOT the official deployment method.
+# The official contract is the published container image at ghcr.io/wolfeitz/burlymcp:main
+
+services:
+  burlymcp:
+    image: ghcr.io/wolfeitz/burlymcp:main
+    container_name: burlymcp-minimal
+    
+    ports:
+      - "9400:9400"
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9400/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Minimal/no-privilege run equivalent:
+# docker run --rm -p 9400:9400 ghcr.io/wolfeitz/burlymcp:main
+# curl http://127.0.0.1:9400/health
+# curl -X POST http://127.0.0.1:9400/mcp -H 'content-type: application/json' -d '{"id":"1","method":"list_tools","params":{}}'

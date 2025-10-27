@@ -1,0 +1,259 @@
+name: Publish Container Image
+
+"on":
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types:
+      - completed
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_publish:
+        description: 'Force publish even if no changes'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Build and Publish Container
+    runs-on: ubuntu-latest
+    # Only run if CI workflow succeeded (or if manually triggered)
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
+      image_tags: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate version
+        id: version
+        run: |
+          # Generate semantic version: 1.0.YYYYMMDD-HHMMSS
+          VERSION="1.0.$(date -u +%Y%m%d-%H%M%S)"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Generated version: $VERSION"
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=main
+            type=raw,value=latest
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=sha,prefix={{branch}}-,format=short
+          flavor: |
+            latest=false
+          labels: |
+            org.opencontainers.image.title=BurlyMCP Runtime Container
+            org.opencontainers.image.description=Standalone service container for BurlyMCP with HTTP endpoints (/health, /mcp)
+            org.opencontainers.image.vendor=BurlyMCP Team
+            org.opencontainers.image.version=1.0.0
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}/blob/main/README.md
+            org.opencontainers.image.licenses=MIT
+            security.non-root=true
+            security.user=mcp:1000
+            security.capabilities=minimal
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            VCS_REF=${{ github.sha }}
+          provenance: true
+          sbom: true
+
+  validate:
+    name: Validate Published Image
+    runs-on: ubuntu-latest
+    needs: publish
+    
+    steps:
+      - name: Test image functionality
+        run: |
+          # Extract the main tag from the published tags
+          MAIN_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main"
+          
+          echo "Testing published image: $MAIN_TAG"
+          
+          # Pull the image
+          docker pull "$MAIN_TAG"
+          
+          # Test basic container startup and health endpoint
+          echo "Starting container for health check test..."
+          CONTAINER_ID=$(docker run -d -p 9400:9400 "$MAIN_TAG")
+          
+          # Wait for container to be ready (max 30 seconds)
+          echo "Waiting for container to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:9400/health >/dev/null 2>&1; then
+              echo "✅ Health endpoint responding after ${i} seconds"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "❌ Health endpoint failed to respond within 30 seconds"
+              docker logs "$CONTAINER_ID"
+              exit 1
+            fi
+            sleep 1
+          done
+          
+          # Test health endpoint response format
+          echo "Testing health endpoint response format..."
+          HEALTH_RESPONSE=$(curl -s http://localhost:9400/health)
+          echo "Health response: $HEALTH_RESPONSE"
+          
+          # Validate health response contains required fields
+          echo "$HEALTH_RESPONSE" | jq -e '.status' >/dev/null || (echo "❌ Missing 'status' field"; exit 1)
+          echo "$HEALTH_RESPONSE" | jq -e '.version' >/dev/null || (echo "❌ Missing 'version' field"; exit 1)
+          echo "$HEALTH_RESPONSE" | jq -e '.tools_available' >/dev/null || (echo "❌ Missing 'tools_available' field"; exit 1)
+          
+          # Test MCP endpoint with list_tools
+          echo "Testing MCP endpoint with list_tools..."
+          MCP_RESPONSE=$(curl -s -X POST http://localhost:9400/mcp \
+            -H "Content-Type: application/json" \
+            -d '{"id":"test-1","method":"list_tools","params":{}}')
+          echo "MCP response: $MCP_RESPONSE"
+          
+          # Validate MCP response format
+          echo "$MCP_RESPONSE" | jq -e '.ok' >/dev/null || (echo "❌ Missing 'ok' field in MCP response"; exit 1)
+          echo "$MCP_RESPONSE" | jq -e '.summary' >/dev/null || (echo "❌ Missing 'summary' field in MCP response"; exit 1)
+          
+          # Clean up
+          docker stop "$CONTAINER_ID"
+          docker rm "$CONTAINER_ID"
+          
+          echo "✅ Image validation successful"
+
+      - name: Test multi-platform images
+        run: |
+          MAIN_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main"
+          
+          # Test AMD64 image
+          echo "Testing AMD64 image..."
+          docker run --rm --platform linux/amd64 "$MAIN_TAG" python3 --version
+          
+          # Test ARM64 image (if available)
+          echo "Testing ARM64 image..."
+          docker run --rm --platform linux/arm64 "$MAIN_TAG" python3 --version || echo "ARM64 test skipped (not available on this runner)"
+          
+          echo "✅ Multi-platform validation completed"
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: publish
+    
+    permissions:
+      security-events: write
+    
+    steps:
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'container-image-main'
+
+      - name: Run Trivy for blocking scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+  publish-summary:
+    name: Publish Summary
+    runs-on: ubuntu-latest
+    needs: [publish, validate, security-scan]
+    if: always()
+    
+    steps:
+      - name: Generate publish summary
+        run: |
+          echo "## 🐳 Container Image Publishing Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Build & Push | ${{ needs.publish.result == 'success' && '✅' || '❌' }} | Multi-platform build from Dockerfile.runtime |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image Validation | ${{ needs.validate.result == 'success' && '✅' || '❌' }} | Health and MCP endpoint tests |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security-scan.result == 'success' && '✅' || '❌' }} | Trivy vulnerability scan |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### 📦 Published Images" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags Published**:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`latest\` (watchtower compatible)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`main\` (rolling main branch)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ steps.version.outputs.version }}\` (semantic version)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ github.ref_name }}-${{ github.sha }}\` (forensic snapshot)" >> $GITHUB_STEP_SUMMARY
+          echo "**Platforms**: linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 Usage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Minimal run (no privileges)" >> $GITHUB_STEP_SUMMARY
+          echo "docker run --rm -p 9400:9400 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Test endpoints" >> $GITHUB_STEP_SUMMARY
+          echo "curl http://127.0.0.1:9400/health" >> $GITHUB_STEP_SUMMARY
+          echo "curl -X POST http://127.0.0.1:9400/mcp -H 'Content-Type: application/json' \\\\" >> $GITHUB_STEP_SUMMARY
+          echo "  -d '{\"id\":\"1\",\"method\":\"list_tools\",\"params\":{}}'" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Contract" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Port**: 9400" >> $GITHUB_STEP_SUMMARY
+          echo "- **Health**: GET /health" >> $GITHUB_STEP_SUMMARY
+          echo "- **MCP**: POST /mcp" >> $GITHUB_STEP_SUMMARY
+          echo "- **Zero-config startup**: No external dependencies required" >> $GITHUB_STEP_SUMMARY
+          echo "- **Security**: Runs as non-root user (mcp:1000)" >> $GITHUB_STEP_SUMMARY

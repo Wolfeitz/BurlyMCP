@@ -1,5 +1,0 @@
-
-tools:
-  incomplete_tool:
-    description: "Missing required fields"
-    # Missing args_schema, command, mutates, requires_confirm, timeout_sec

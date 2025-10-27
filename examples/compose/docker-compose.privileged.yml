@@ -1,0 +1,66 @@
+# EXAMPLE ONLY - Privileged BurlyMCP Docker Compose
+# 
+# REFERENCE ONLY. The authoritative interface is the container (port 9400, /health, /mcp).
+# This example shows how to enable Docker socket access and other privileged features.
+# 
+# Security note: mounting /var/run/docker.sock effectively gives BurlyMCP 
+# root-equivalent power on the host. Do not expose that mode on untrusted networks.
+#
+# EXAMPLE ONLY - This is NOT the official deployment method.
+# The official contract is the published container image at ghcr.io/wolfeitz/burlymcp:main
+
+services:
+  burlymcp:
+    image: ghcr.io/wolfeitz/burlymcp:main
+    container_name: burlymcp-privileged
+    
+    ports:
+      - "9400:9400"
+    
+    environment:
+      # Optional: Configure blog directories
+      - BLOG_STAGE_ROOT=/app/data/blog/stage
+      - BLOG_PUBLISH_ROOT=/app/data/blog/publish
+      
+      # Optional: Enable notifications
+      # - GOTIFY_URL=https://your-gotify-server.com
+      # - GOTIFY_TOKEN=your-token-here
+      
+      # Optional: Adjust logging
+      - LOG_LEVEL=INFO
+    
+    volumes:
+      # Optional: Persist audit logs
+      - ./logs:/var/log/agentops:rw
+      
+      # Optional: Blog content directories
+      - ./blog/stage:/app/data/blog/stage:ro
+      - ./blog/publish:/app/data/blog/publish:rw
+      
+      # PRIVILEGED: Docker socket access (gives root-equivalent power)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    
+    # REQUIRED: to allow container to inspect host Docker,
+    # replace <host_docker_group_gid> with the numeric GID of your docker group:
+    #   getent group docker
+    # Example: if getent group docker returns "docker:x:999:user", use 999
+    group_add:
+      - "<host_docker_group_gid>"
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9400/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# To find your docker group GID:
+# getent group docker
+# 
+# Example setup commands:
+# DOCKER_GID=$(getent group docker | cut -d: -f3)
+# docker compose -f docker-compose.privileged.yml up -d
+# 
+# Or use environment variable substitution:
+# DOCKER_GID=$(getent group docker | cut -d: -f3) docker compose -f docker-compose.privileged.yml up -d

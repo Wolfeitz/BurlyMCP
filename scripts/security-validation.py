@@ -96,8 +96,8 @@ class SecurityValidator:
         """Validate Docker security configuration"""
         print("Validating Docker configuration...")
         
-        # Check docker-compose files
-        compose_files = ['docker-compose.yml', 'docker-compose.prod.yml', 'docker/docker-compose.yml']
+        # Check example docker-compose files
+        compose_files = ['examples/compose/docker-compose.yml', 'examples/compose/docker-compose.override.yml', 'docker/docker-compose.yml']
         
         for compose_file in compose_files:
             compose_path = self.project_root / compose_file

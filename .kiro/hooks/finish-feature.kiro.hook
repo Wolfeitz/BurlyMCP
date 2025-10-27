@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Finish Feature",
+  "description": "Complete feature workflow that enforces non-main branch, runs validation, creates commits, pushes, and optionally opens PRs with sync",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*[finish-feature]*"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Execute the finish-feature workflow (full completion flow):\n\n1. **Branch enforcement:**\n   - Verify we're in a git repository with origin remote\n   - Run `git fetch --prune origin`\n   - Check current branch - if on main/master, ABORT with error \"Cannot finish feature from main branch. Switch to feature branch first.\"\n   - Ensure we're on a feature branch (not main/master)\n\n2. **Pre-commit validation (re-run):**\n   - Run `npm test` or `pytest -q` if project config detected\n   - Run secret scan if trufflehog/gitleaks present\n   - If tests fail OR critical security issues found, ABORT immediately\n   - Show validation results\n\n3. **Stage and commit changes:**\n   - Run `git add -A` to stage all changes (only safe files, exclude secrets/temp)\n   - If staged changes exist, create a Conventional Commit message (look for commit message in file marker, otherwise use \"feat: complete <feature-name>\")\n   - Block commits containing \"wip\" in the message - ABORT if detected\n   - Run `git commit -m \"<message>\" --no-verify` only if there are staged changes\n\n4. **Push changes:**\n   - Run `git push -u origin <branch>` to set upstream if missing\n   - If push is rejected due to divergence, run `git pull --rebase` then retry push\n   - Report push status\n\n5. **PR readiness assessment:**\n   - Compute diff vs origin/main using `git rev-list --count <branch> ^origin/main`\n   - Run quick checks: look at latest 10 commit subjects for wip|fixup!|squash! patterns\n   - Summarize as \"✅ Ready for PR\" or \"❌ Not ready\" with bullet reasons\n   - If ready and user confirms, run `gh pr create --fill --base main --head <branch>` (only if gh is authenticated)\n\n6. **Optional sync from main (only if requested):**\n   - Ask user if they want to sync/rebase with main\n   - If yes: Switch to main/master, pull latest, switch back to feature branch\n   - Rebase on origin/main by default, fall back to merge if needed\n   - Push with `git push --force-with-lease` (rebase) or `git push` (merge)\n\n7. **Output completion report:**\n   - Branch name used\n   - Commit made (or \"no changes\")\n   - Push status\n   - PR status (created/skipped/failed)\n   - Sync status (if performed)"
+  }
+}

@@ -282,7 +282,9 @@ def mock_audit_and_notifications(monkeypatch):
 
     # Try to mock audit logging - only if module exists
     try:
+        # Mock the imported function in the registry module
         monkeypatch.setattr("burly_mcp.tools.registry.log_tool_execution", mock_audit)
+        # Also mock the audit logger itself
         monkeypatch.setattr("burly_mcp.audit.get_audit_logger", Mock())
     except (ImportError, AttributeError):
         pass  # Module not available, skip mocking
@@ -461,3 +463,222 @@ def network_error():
         return error
 
     return create_error
+
+# HTTP Bridge Testing Support
+try:
+    import requests
+    from testcontainers.core.generic import DockerContainer
+    HTTP_CLIENT_AVAILABLE = True
+except ImportError:
+    HTTP_CLIENT_AVAILABLE = False
+    requests = None
+    DockerContainer = None
+
+
+@pytest.fixture
+def http_client():
+    """Provide HTTP client for testing HTTP endpoints."""
+    if not HTTP_CLIENT_AVAILABLE:
+        pytest.skip("HTTP client dependencies not available")
+    
+    session = requests.Session()
+    session.timeout = 30  # 30 second timeout for HTTP requests
+    
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture
+def http_bridge_container():
+    """
+    Start HTTP bridge container for integration testing.
+    
+    This fixture provides a running HTTP bridge container with
+    the /health and /mcp endpoints available for testing.
+    """
+    if not HTTP_CLIENT_AVAILABLE:
+        pytest.skip("testcontainers not available")
+    
+    # Use the existing http_bridge.py for testing
+    container = DockerContainer("python:3.12-slim")
+    container.with_command("python -m http_bridge")
+    container.with_exposed_ports(9400)
+    container.with_env("PORT", "9400")
+    container.with_env("MCP_ENV", "test")
+    container.with_env("LOG_LEVEL", "DEBUG")
+    
+    # Mount the current directory to access http_bridge.py
+    container.with_volume_mapping(".", "/app", "ro")
+    container.with_working_directory("/app")
+    
+    try:
+        container.start()
+        
+        # Wait for container to be ready
+        host = container.get_container_host_ip()
+        port = container.get_exposed_port(9400)
+        base_url = f"http://{host}:{port}"
+        
+        # Wait for health endpoint to be available
+        import time
+        for _ in range(30):  # Wait up to 30 seconds
+            try:
+                response = requests.get(f"{base_url}/health", timeout=1)
+                if response.status_code == 200:
+                    break
+            except requests.RequestException:
+                time.sleep(1)
+        else:
+            pytest.skip("HTTP bridge container failed to start")
+        
+        yield base_url
+        
+    finally:
+        container.stop()
+
+
+@pytest.fixture
+def sample_mcp_http_request():
+    """Provide sample MCP HTTP request data."""
+    return {
+        "id": "test-request",
+        "method": "list_tools",
+        "params": {}
+    }
+
+
+@pytest.fixture
+def sample_mcp_call_tool_request():
+    """Provide sample MCP call_tool HTTP request data."""
+    return {
+        "id": "test-call-tool",
+        "method": "call_tool",
+        "name": "disk_space",
+        "args": {"path": "/"}
+    }
+
+
+@pytest.fixture
+def sample_mcp_call_tool_params_request():
+    """Provide sample MCP call_tool HTTP request in params format."""
+    return {
+        "id": "test-call-tool-params",
+        "method": "call_tool",
+        "params": {
+            "name": "disk_space",
+            "args": {"path": "/"}
+        }
+    }
+
+
+@pytest.fixture
+def mock_http_bridge_config(monkeypatch):
+    """Set up mock configuration for HTTP bridge testing."""
+    test_dir = Path(__file__).parent
+    
+    # Mock configuration values for HTTP bridge
+    config_values = {
+        "server_name": "test-burly-mcp",
+        "server_version": "0.0.1-test",
+        "host": "0.0.0.0",
+        "port": 9400,
+        "log_level": "DEBUG",
+        "policy_file": str(test_dir / "fixtures" / "test_policy.yaml"),
+        "audit_enabled": True,
+        "notifications_enabled": False,
+        "docker_socket": "/var/run/docker.sock",
+        "blog_stage_root": str(test_dir / "fixtures" / "blog_stage"),
+        "blog_publish_root": str(test_dir / "fixtures" / "blog_publish"),
+        "strict_security_mode": True,
+        "gotify_url": "",
+        "gotify_token": "",
+    }
+    
+    # Mock the load_runtime_config function
+    def mock_load_config():
+        return config_values
+    
+    monkeypatch.setattr("http_bridge.load_runtime_config", mock_load_config)
+    
+    return config_values
+
+
+@pytest.fixture
+def mock_mcp_engine_response():
+    """Provide mock MCP engine response for testing."""
+    return {
+        "ok": True,
+        "summary": "Operation completed successfully",
+        "data": {
+            "tools": [
+                {
+                    "name": "disk_space",
+                    "description": "Check disk space usage",
+                    "args_schema": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "Path to check"}
+                        },
+                        "required": ["path"]
+                    }
+                }
+            ]
+        },
+        "metrics": {
+            "elapsed_ms": 150,
+            "exit_code": 0
+        }
+    }
+
+
+@pytest.fixture
+def mock_mcp_engine_error_response():
+    """Provide mock MCP engine error response for testing."""
+    return {
+        "ok": False,
+        "summary": "Tool execution failed",
+        "error": "Tool 'nonexistent_tool' not found",
+        "metrics": {
+            "elapsed_ms": 50,
+            "exit_code": 1
+        }
+    }
+
+
+# HTTP Bridge Test Markers
+def pytest_configure(config):
+    """Configure pytest with HTTP bridge test markers."""
+    # Add HTTP bridge specific markers
+    config.addinivalue_line("markers", "http: Tests for HTTP bridge functionality")
+    config.addinivalue_line("markers", "api: Tests for HTTP API endpoints")
+    config.addinivalue_line("markers", "container: Tests for runtime container")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Automatically mark tests based on their location and content."""
+    for item in items:
+        # Existing markers
+        if "unit" in str(item.fspath):
+            item.add_marker(pytest.mark.unit)
+        elif "integration" in str(item.fspath):
+            item.add_marker(pytest.mark.integration)
+
+        # Mark Docker-related tests
+        if "docker" in str(item.fspath) or "docker" in item.name.lower():
+            item.add_marker(pytest.mark.docker)
+
+        # Mark slow tests
+        if "integration" in str(item.fspath):
+            item.add_marker(pytest.mark.slow)
+        
+        # New HTTP bridge markers
+        if "http_bridge" in str(item.fspath) or "http" in item.name.lower():
+            item.add_marker(pytest.mark.http)
+        
+        if "api" in item.name.lower() or "_endpoint" in item.name.lower():
+            item.add_marker(pytest.mark.api)
+        
+        if "container" in item.name.lower() or "runtime" in item.name.lower():
+            item.add_marker(pytest.mark.container)

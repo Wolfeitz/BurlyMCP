@@ -1,0 +1,25 @@
+{
+  "enabled": true,
+  "name": "YAML/JSON Validator",
+  "description": "Validates YAML and JSON syntax whenever these files are created or edited, preventing syntax errors from breaking CI/CD pipelines",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*.yml",
+      "**/*.yaml",
+      "**/*.json",
+      ".github/workflows/*.yml",
+      ".github/workflows/*.yaml",
+      "docker-compose*.yml",
+      "docker-compose*.yaml",
+      "pyproject.toml",
+      "package.json",
+      "tsconfig.json"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Validate all YAML and JSON files that were just created or edited. Perform the following comprehensive validation:\n\n## YAML Validation\n1. **Syntax Check**: Parse each YAML file and report any syntax errors (indentation, invalid characters, malformed structures)\n2. **GitHub Actions Specific**: For workflow files in .github/workflows/, validate:\n   - Required fields (name, on, jobs)\n   - Valid trigger types and configurations\n   - Proper job structure with steps\n   - Valid action references (uses: format)\n3. **Docker Compose Specific**: For docker-compose files, validate:\n   - Valid service definitions\n   - Proper volume and network syntax\n   - Environment variable format\n\n## JSON Validation\n1. **Syntax Check**: Parse each JSON file and report any syntax errors (missing commas, brackets, quotes)\n2. **Package.json Specific**: Validate npm package.json structure\n3. **Config Files**: Validate configuration JSON files have proper structure\n\n## TOML Validation (if applicable)\n1. **Syntax Check**: Parse TOML files like pyproject.toml\n\n## Validation Process\n- Use Python's yaml.safe_load() for YAML files\n- Use json.loads() for JSON files\n- For each file, report:\n  - ✅ Valid syntax\n  - ❌ Syntax errors with line numbers and specific issues\n  - ⚠️ Warnings for potential issues (like missing required fields)\n\n## Error Handling\n- If ANY file has syntax errors, REFUSE to proceed\n- Provide specific error messages with file paths and line numbers\n- Suggest corrections where possible\n- Only proceed if ALL files pass validation\n\n## Output Format\nProvide a clear summary:\n```\n📋 YAML/JSON Validation Results\n\n✅ Valid Files:\n- .github/workflows/ci.yml\n- docker-compose.yml\n- package.json\n\n❌ Invalid Files:\n- .github/workflows/publish-image.yml:12 - Invalid indentation\n- config/settings.json:5 - Missing comma after 'key'\n\n⚠️ Warnings:\n- .github/workflows/test.yml - Missing 'name' field (recommended)\n```\n\nIf all files are valid, proceed silently. If errors exist, REFUSE to proceed until fixed."
+  }
+}

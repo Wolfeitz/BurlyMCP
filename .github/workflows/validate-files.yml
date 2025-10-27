@@ -1,0 +1,104 @@
+name: File Validation
+
+"on":
+  pull_request:
+    paths:
+      - '**/*.yml'
+      - '**/*.yaml'
+      - '**/*.json'
+      - '**/*.toml'
+      - '.github/workflows/**'
+  push:
+    branches: [main, develop]
+    paths:
+      - '**/*.yml'
+      - '**/*.yaml'
+      - '**/*.json'
+      - '**/*.toml'
+      - '.github/workflows/**'
+
+jobs:
+  validate-yaml-json:
+    name: Validate YAML/JSON Files
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+
+      - name: Run YAML/JSON validation
+        run: |
+          python3 scripts/validate_yaml_json.py --strict
+
+      - name: Validate GitHub Actions workflows
+        run: |
+          # Validate all workflow YAML files
+          for file in .github/workflows/*.yml; do
+            if [ -f "$file" ]; then
+              echo "Validating $file..."
+              python3 -c "import yaml; yaml.safe_load(open('$file'))"
+            fi
+          done
+
+  validate-specific-configs:
+    name: Validate Specific Configurations
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose files
+        if: hashFiles('docker-compose*.yml') != ''
+        run: |
+          # Install docker-compose for validation
+          sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          
+          # Validate all docker-compose files
+          for file in docker-compose*.yml; do
+            if [ -f "$file" ]; then
+              echo "Validating $file..."
+              docker-compose -f "$file" config --quiet
+            fi
+          done
+
+      - name: Validate GitHub Actions workflows with actionlint
+        uses: reviewdog/action-actionlint@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          fail_on_error: true
+
+  validation-summary:
+    name: Validation Summary
+    runs-on: ubuntu-latest
+    needs: [validate-yaml-json, validate-specific-configs]
+    if: always()
+    
+    steps:
+      - name: Generate validation summary
+        run: |
+          echo "## 📋 File Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| YAML/JSON Syntax | ${{ needs.validate-yaml-json.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Config Validation | ${{ needs.validate-specific-configs.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.validate-yaml-json.result }}" == "success" && "${{ needs.validate-specific-configs.result }}" == "success" ]]; then
+            echo "🎉 **All file validations passed!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Some validations failed. Please check the logs above.**" >> $GITHUB_STEP_SUMMARY
+          fi

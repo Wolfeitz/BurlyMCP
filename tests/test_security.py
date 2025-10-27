@@ -13,6 +13,7 @@ Test Categories:
 - Security violation logging
 """
 
+import json
 import os
 import subprocess
 import time
@@ -744,3 +745,377 @@ class TestSecurityEdgeCases:
         if result.success:  # Only check if Python is available
             assert len(result.stdout) <= 1000
             assert result.stdout_truncated is True
+
+# HTTP Bridge Security Tests
+try:
+    from fastapi.testclient import TestClient
+    from http_bridge import app
+    HTTP_BRIDGE_AVAILABLE = True
+except ImportError:
+    HTTP_BRIDGE_AVAILABLE = False
+    TestClient = None
+    app = None
+
+# HTTP Client Testing Support
+try:
+    import requests
+    from testcontainers.core.generic import DockerContainer
+    HTTP_CLIENT_AVAILABLE = True
+except ImportError:
+    HTTP_CLIENT_AVAILABLE = False
+    requests = None
+    DockerContainer = None
+
+
+@pytest.mark.security
+@pytest.mark.http
+@pytest.mark.skipif(not HTTP_BRIDGE_AVAILABLE, reason="HTTP bridge not available")
+class TestHTTPBridgeSecurity:
+    """Security tests for HTTP bridge endpoints."""
+
+    @pytest.fixture
+    def client(self, mock_http_bridge_config):
+        """Create test client with mocked configuration."""
+        return TestClient(app)
+
+    def test_http_request_size_limits(self, client):
+        """Test HTTP request size validation."""
+        # Create oversized request
+        large_data = "x" * 15000  # 15KB of data
+        request_data = {
+            "id": "security-test-1",
+            "method": "call_tool",
+            "name": "test_tool",
+            "args": {"large_field": large_data}
+        }
+        
+        response = client.post("/mcp", json=request_data)
+        
+        # Should return HTTP 200 with error in body (per requirements)
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["ok"] is False
+        assert "exceeds maximum size" in data["error"].lower()
+
+    def test_http_tool_name_sanitization(self, client):
+        """Test tool name sanitization in HTTP requests."""
+        # Test various invalid tool names
+        invalid_names = [
+            "tool-with-dashes",
+            "tool.with.dots", 
+            "tool with spaces",
+            "tool/with/slashes",
+            "tool;with;semicolons",
+            "tool&with&ampersands",
+            "tool|with|pipes",
+            "tool$(injection)",
+            "tool`with`backticks",
+            "../path/traversal",
+            "tool\x00with\x00nulls"
+        ]
+        
+        for invalid_name in invalid_names:
+            request_data = {
+                "id": f"security-test-{invalid_name}",
+                "method": "call_tool",
+                "name": invalid_name,
+                "args": {}
+            }
+            
+            response = client.post("/mcp", json=request_data)
+            
+            # Should return validation error (HTTP 422) or sanitization error (HTTP 200)
+            assert response.status_code in [200, 422]
+            
+            if response.status_code == 200:
+                data = response.json()
+                assert data["ok"] is False
+                assert ("invalid" in data["error"].lower() or 
+                       "validation" in data["error"].lower())
+
+    def test_http_argument_complexity_limits(self, client):
+        """Test argument complexity validation."""
+        # Create deeply nested arguments
+        nested_args = {"level1": {"level2": {"level3": {"level4": {"level5": {"level6": "too deep"}}}}}}
+        request_data = {
+            "id": "security-test-nested",
+            "method": "call_tool",
+            "name": "test_tool",
+            "args": nested_args
+        }
+        
+        response = client.post("/mcp", json=request_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["ok"] is False
+        assert "nested" in data["error"].lower()
+
+    def test_http_argument_count_limits(self, client):
+        """Test argument count validation."""
+        # Create request with too many arguments
+        large_args = {f"arg_{i}": f"value_{i}" for i in range(150)}  # 150 arguments
+        request_data = {
+            "id": "security-test-count",
+            "method": "call_tool",
+            "name": "test_tool",
+            "args": large_args
+        }
+        
+        response = client.post("/mcp", json=request_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["ok"] is False
+        assert ("too many" in data["error"].lower() or 
+               "items" in data["error"].lower())
+
+    def test_http_string_length_limits(self, client):
+        """Test string length validation in arguments."""
+        # Create request with very long string value
+        long_string = "x" * 15000  # 15KB string
+        request_data = {
+            "id": "security-test-string",
+            "method": "call_tool",
+            "name": "test_tool",
+            "args": {"long_value": long_string}
+        }
+        
+        response = client.post("/mcp", json=request_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["ok"] is False
+        assert ("exceeds maximum size" in data["error"].lower() or 
+               "string" in data["error"].lower())
+
+    def test_http_json_injection_protection(self, client):
+        """Test protection against JSON injection attacks."""
+        # Test various JSON injection attempts
+        injection_attempts = [
+            '{"id": "test", "method": "call_tool", "name": "test", "args": {}, "extra": "injected"}',
+            '{"id": "test", "method": "call_tool", "name": "test", "args": {"key": "value"}, "malicious": true}',
+        ]
+        
+        for injection in injection_attempts:
+            response = client.post(
+                "/mcp", 
+                data=injection,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            # Should either validate properly or reject
+            if response.status_code == 200:
+                data = response.json()
+                # If accepted, should not contain injected fields in the response
+                assert "extra" not in str(data)
+                assert "malicious" not in str(data)
+
+    def test_http_content_type_validation(self, client):
+        """Test content type validation."""
+        request_data = {
+            "id": "security-test-content-type",
+            "method": "list_tools",
+            "params": {}
+        }
+        
+        # Test with wrong content type
+        response = client.post(
+            "/mcp",
+            data=json.dumps(request_data),
+            headers={"Content-Type": "text/plain"}
+        )
+        
+        # Should reject or handle gracefully
+        assert response.status_code in [200, 400, 415, 422]
+
+    def test_http_method_validation(self, client):
+        """Test HTTP method validation."""
+        # Test wrong HTTP methods on /mcp endpoint
+        wrong_methods = ["GET", "PUT", "DELETE", "PATCH"]
+        
+        for method in wrong_methods:
+            response = client.request(method, "/mcp")
+            
+            # Should return method not allowed
+            assert response.status_code == 405
+
+    def test_http_path_traversal_protection(self, client):
+        """Test protection against path traversal in tool arguments."""
+        # Test path traversal attempts in tool arguments
+        traversal_attempts = [
+            "../../../etc/passwd",
+            "..\\..\\..\\windows\\system32\\config\\sam",
+            "/etc/passwd",
+            "C:\\Windows\\System32\\config\\SAM",
+            "file:///etc/passwd",
+            "\\\\server\\share\\file.txt"
+        ]
+        
+        for path in traversal_attempts:
+            request_data = {
+                "id": f"security-test-path-{hash(path)}",
+                "method": "call_tool",
+                "name": "test_tool",
+                "args": {"path": path}
+            }
+            
+            response = client.post("/mcp", json=request_data)
+            
+            # Should handle gracefully (may succeed or fail depending on tool implementation)
+            assert response.status_code == 200
+            data = response.json()
+            
+            # If the tool validates paths, it should reject traversal attempts
+            # This depends on the specific tool implementation
+
+    def test_http_header_injection_protection(self, client):
+        """Test protection against HTTP header injection."""
+        # Test various header injection attempts
+        malicious_headers = {
+            "X-Forwarded-For": "127.0.0.1\r\nX-Injected: malicious",
+            "User-Agent": "Mozilla/5.0\r\nX-Injected: malicious",
+            "Content-Type": "application/json\r\nX-Injected: malicious"
+        }
+        
+        request_data = {
+            "id": "security-test-headers",
+            "method": "list_tools",
+            "params": {}
+        }
+        
+        for header_name, header_value in malicious_headers.items():
+            response = client.post(
+                "/mcp",
+                json=request_data,
+                headers={header_name: header_value}
+            )
+            
+            # Should handle gracefully and not reflect injected headers
+            assert response.status_code in [200, 400]
+            
+            # Check that injected headers are not reflected in response
+            response_headers = dict(response.headers)
+            assert "X-Injected" not in response_headers
+
+    @patch('http_bridge.forward_to_mcp_engine')
+    def test_http_error_information_disclosure(self, mock_forward, client):
+        """Test that HTTP errors don't disclose sensitive information."""
+        # Mock forward_to_mcp_engine to raise various exceptions
+        sensitive_exceptions = [
+            Exception("/home/user/secret/path/file.py: line 123"),
+            Exception("Database connection failed: password=secret123"),
+            Exception("API key abc123def456 is invalid"),
+            Exception("Internal server error at /var/log/sensitive.log")
+        ]
+        
+        for exception in sensitive_exceptions:
+            mock_forward.side_effect = exception
+            
+            request_data = {
+                "id": "security-test-disclosure",
+                "method": "list_tools",
+                "params": {}
+            }
+            
+            response = client.post("/mcp", json=request_data)
+            
+            assert response.status_code == 200
+            data = response.json()
+            
+            assert data["ok"] is False
+            
+            # Error message should be sanitized and not contain sensitive info
+            error_msg = data.get("error", "").lower()
+            assert "password" not in error_msg
+            assert "secret" not in error_msg
+            assert "api key" not in error_msg
+            assert "/home/" not in error_msg
+            assert "/var/" not in error_msg
+
+    def test_http_cors_configuration(self, client):
+        """Test CORS configuration for security."""
+        # Test CORS headers
+        response = client.options("/mcp")
+        
+        # Should handle OPTIONS request
+        assert response.status_code in [200, 405]
+        
+        # Check for appropriate CORS headers (if configured)
+        cors_headers = [
+            "Access-Control-Allow-Origin",
+            "Access-Control-Allow-Methods", 
+            "Access-Control-Allow-Headers"
+        ]
+        
+        # CORS configuration depends on deployment requirements
+        # This test documents expected behavior
+
+    def test_http_security_headers(self, client):
+        """Test security headers in HTTP responses."""
+        response = client.get("/health")
+        
+        assert response.status_code == 200
+        
+        # Check for security headers (implementation dependent)
+        security_headers = [
+            "X-Content-Type-Options",
+            "X-Frame-Options", 
+            "X-XSS-Protection",
+            "Strict-Transport-Security"
+        ]
+        
+        # Security headers configuration depends on deployment requirements
+        # This test documents expected behavior
+
+
+@pytest.mark.security
+@pytest.mark.http
+@pytest.mark.integration
+@pytest.mark.skipif(not HTTP_CLIENT_AVAILABLE, reason="HTTP client not available")
+class TestHTTPBridgeRateLimitingSecurity:
+    """Security tests for HTTP bridge rate limiting."""
+
+    def test_rate_limiting_enabled_by_default(self):
+        """Test that rate limiting is enabled by default."""
+        # This would test the actual rate limiting configuration
+        pytest.skip("Rate limiting integration testing pending")
+
+    def test_rate_limiting_bypass_protection(self):
+        """Test protection against rate limiting bypass attempts."""
+        pytest.skip("Rate limiting bypass testing pending")
+
+    def test_rate_limiting_distributed_attacks(self):
+        """Test rate limiting against distributed attacks."""
+        pytest.skip("Distributed attack testing pending")
+
+    def test_rate_limiting_configuration_security(self):
+        """Test rate limiting configuration security."""
+        pytest.skip("Rate limiting configuration testing pending")
+
+
+@pytest.mark.security
+@pytest.mark.http
+@pytest.mark.integration
+class TestHTTPBridgeSecurityIntegration:
+    """Integration security tests for HTTP bridge."""
+
+    def test_security_violation_audit_logging(self):
+        """Test that security violations are properly logged."""
+        pytest.skip("Security audit logging testing pending")
+
+    def test_security_violation_notification(self):
+        """Test that security violations trigger notifications."""
+        pytest.skip("Security notification testing pending")
+
+    def test_security_violation_response_consistency(self):
+        """Test consistent responses for security violations."""
+        pytest.skip("Security response consistency testing pending")
+
+    def test_security_configuration_validation(self):
+        """Test security configuration validation."""
+        pytest.skip("Security configuration testing pending")

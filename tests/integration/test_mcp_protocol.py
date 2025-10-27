@@ -1,5 +1,8 @@
 """
 Integration tests for MCP protocol functionality.
+
+Tests both stdin/stdout MCP protocol (legacy) and HTTP bridge endpoints (new).
+This ensures compatibility during the transition to HTTP-based architecture.
 """
 
 import json
@@ -8,6 +11,13 @@ import subprocess
 import time
 
 import pytest
+
+try:
+    import requests
+    HTTP_CLIENT_AVAILABLE = True
+except ImportError:
+    HTTP_CLIENT_AVAILABLE = False
+    requests = None
 
 
 @pytest.fixture
@@ -569,3 +579,66 @@ config:
 
         # Test with security config
         # This would verify security features work correctly
+
+
+@pytest.mark.integration
+@pytest.mark.mcp
+@pytest.mark.http
+@pytest.mark.skipif(not HTTP_CLIENT_AVAILABLE, reason="HTTP client not available")
+class TestMCPProtocolHTTPIntegration:
+    """Integration tests for MCP protocol via HTTP endpoints."""
+
+    def test_http_health_endpoint(self, http_client):
+        """Test HTTP /health endpoint."""
+        # This test would use a running HTTP bridge container
+        # For now, we'll skip if container not available
+        pytest.skip("HTTP bridge container integration pending")
+
+    def test_http_mcp_list_tools(self, http_client, sample_mcp_http_request):
+        """Test MCP list_tools via HTTP endpoint."""
+        # This test would use a running HTTP bridge container
+        pytest.skip("HTTP bridge container integration pending")
+
+    def test_http_mcp_call_tool_direct_format(self, http_client, sample_mcp_call_tool_request):
+        """Test MCP call_tool via HTTP with direct format."""
+        pytest.skip("HTTP bridge container integration pending")
+
+    def test_http_mcp_call_tool_params_format(self, http_client, sample_mcp_call_tool_params_request):
+        """Test MCP call_tool via HTTP with params format."""
+        pytest.skip("HTTP bridge container integration pending")
+
+    def test_http_mcp_error_handling(self, http_client):
+        """Test HTTP MCP error handling."""
+        pytest.skip("HTTP bridge container integration pending")
+
+    def test_http_mcp_always_returns_200(self, http_client):
+        """Test that /mcp endpoint always returns HTTP 200 even on errors."""
+        pytest.skip("HTTP bridge container integration pending")
+
+    def test_http_mcp_rate_limiting(self, http_client):
+        """Test HTTP MCP rate limiting functionality."""
+        pytest.skip("HTTP bridge container integration pending")
+
+    def test_http_mcp_request_size_limits(self, http_client):
+        """Test HTTP MCP request size validation."""
+        pytest.skip("HTTP bridge container integration pending")
+
+
+@pytest.mark.integration
+@pytest.mark.mcp
+class TestMCPProtocolCompatibility:
+    """Test compatibility between stdin/stdout and HTTP MCP protocols."""
+
+    def test_protocol_response_equivalence(self):
+        """Test that stdin/stdout and HTTP protocols return equivalent responses."""
+        # This would test that both protocols return the same data structure
+        # for the same requests, ensuring API compatibility
+        pytest.skip("Protocol compatibility testing pending")
+
+    def test_error_format_consistency(self):
+        """Test that error responses are consistent between protocols."""
+        pytest.skip("Error format consistency testing pending")
+
+    def test_metrics_format_consistency(self):
+        """Test that metrics are consistently formatted between protocols."""
+        pytest.skip("Metrics format consistency testing pending")

@@ -26,9 +26,9 @@ class TestDockerIntegration:
         self.registry = ToolRegistry()
 
         # Patch audit and notification systems for all tests
-        self.audit_patcher = patch("server.tools.log_tool_execution")
-        self.notify_success_patcher = patch("server.tools.notify_tool_success")
-        self.notify_failure_patcher = patch("server.tools.notify_tool_failure")
+        self.audit_patcher = patch("burly_mcp.tools.registry.log_tool_execution")
+        self.notify_success_patcher = patch("burly_mcp.tools.registry.notify_tool_success")
+        self.notify_failure_patcher = patch("burly_mcp.tools.registry.notify_tool_failure")
 
         self.mock_audit = self.audit_patcher.start()
         self.mock_notify_success = self.notify_success_patcher.start()
@@ -271,10 +271,10 @@ class TestFileSystemIntegration:
         self.registry = ToolRegistry()
 
         # Patch audit and notification systems for all tests
-        self.audit_patcher = patch("server.tools.log_tool_execution")
-        self.notify_success_patcher = patch("server.tools.notify_tool_success")
-        self.notify_failure_patcher = patch("server.tools.notify_tool_failure")
-        self.notify_confirm_patcher = patch("server.tools.notify_tool_confirmation")
+        self.audit_patcher = patch("burly_mcp.tools.registry.log_tool_execution")
+        self.notify_success_patcher = patch("burly_mcp.tools.registry.notify_tool_success")
+        self.notify_failure_patcher = patch("burly_mcp.tools.registry.notify_tool_failure")
+        self.notify_confirm_patcher = patch("burly_mcp.tools.registry.notify_tool_confirmation")
 
         self.mock_audit = self.audit_patcher.start()
         self.mock_notify_success = self.notify_success_patcher.start()
@@ -651,9 +651,9 @@ class TestGotifyIntegration:
         self.registry = ToolRegistry()
 
         # Patch audit and notification systems for all tests
-        self.audit_patcher = patch("server.tools.log_tool_execution")
-        self.notify_success_patcher = patch("server.tools.notify_tool_success")
-        self.notify_failure_patcher = patch("server.tools.notify_tool_failure")
+        self.audit_patcher = patch("burly_mcp.tools.registry.log_tool_execution")
+        self.notify_success_patcher = patch("burly_mcp.tools.registry.notify_tool_success")
+        self.notify_failure_patcher = patch("burly_mcp.tools.registry.notify_tool_failure")
 
         self.mock_audit = self.audit_patcher.start()
         self.mock_notify_success = self.notify_success_patcher.start()
@@ -800,6 +800,11 @@ class TestGotifyIntegration:
         """Test gotify_ping with missing configuration."""
         # Execute gotify_ping without environment variables
         with patch.dict(os.environ, {}, clear=True):
+            # Clear feature detector cache to ensure fresh configuration check
+            from burly_mcp.feature_detection import get_feature_detector
+            feature_detector = get_feature_detector()
+            feature_detector.clear_cache()
+            
             result = self.registry.execute_tool(
                 "gotify_ping", {"message": "Test notification"}
             )
@@ -829,6 +834,11 @@ class TestGotifyIntegration:
             os.environ,
             {"GOTIFY_URL": "http://localhost:8080", "GOTIFY_TOKEN": "test_token"},
         ):
+            # Clear feature detector cache to ensure fresh configuration check
+            from burly_mcp.feature_detection import get_feature_detector
+            feature_detector = get_feature_detector()
+            feature_detector.clear_cache()
+            
             # Execute gotify_ping tool with custom priority
             result = self.registry.execute_tool(
                 "gotify_ping", {"message": "High priority notification", "priority": 8}
@@ -883,9 +893,9 @@ class TestToolRegistryIntegration:
         self.registry = ToolRegistry()
 
         # Patch audit and notification systems for all tests
-        self.audit_patcher = patch("server.tools.log_tool_execution")
-        self.notify_success_patcher = patch("server.tools.notify_tool_success")
-        self.notify_failure_patcher = patch("server.tools.notify_tool_failure")
+        self.audit_patcher = patch("burly_mcp.tools.registry.log_tool_execution")
+        self.notify_success_patcher = patch("burly_mcp.tools.registry.notify_tool_success")
+        self.notify_failure_patcher = patch("burly_mcp.tools.registry.notify_tool_failure")
 
         self.mock_audit = self.audit_patcher.start()
         self.mock_notify_success = self.notify_success_patcher.start()
@@ -943,17 +953,17 @@ class TestToolRegistryIntegration:
         # Verify successful execution
         assert result.success is True
 
-        # Verify audit logging was called (mocked in setup)
-        mock_audit_and_notifications["audit"].assert_called_once()
-        audit_call = mock_audit_and_notifications["audit"].call_args[1]
+        # Verify audit logging was called (using class's own mock)
+        self.mock_audit.assert_called_once()
+        audit_call = self.mock_audit.call_args[1]
         assert audit_call["tool_name"] == "docker_ps"
         assert audit_call["status"] == "ok"
         assert audit_call["mutates"] is False
         assert audit_call["requires_confirm"] is False
 
-        # Verify notification was sent (mocked in setup)
-        mock_audit_and_notifications["notify_success"].assert_called_once()
-        notify_call = mock_audit_and_notifications["notify_success"].call_args[0]
+        # Verify notification was sent (using class's own mock)
+        self.mock_notify_success.assert_called_once()
+        notify_call = self.mock_notify_success.call_args[0]
         assert notify_call[0] == "docker_ps"  # tool_name
         assert "Found 0 running containers" in notify_call[1]  # summary
 
@@ -983,16 +993,16 @@ class TestToolRegistryIntegration:
         # Verify failed execution
         assert result.success is False
 
-        # Verify audit logging was called with failure status (mocked in setup)
-        mock_audit_and_notifications["audit"].assert_called_once()
-        audit_call = mock_audit_and_notifications["audit"].call_args[1]
+        # Verify audit logging was called with failure status (using class's own mock)
+        self.mock_audit.assert_called_once()
+        audit_call = self.mock_audit.call_args[1]
         assert audit_call["tool_name"] == "docker_ps"
         assert audit_call["status"] == "fail"
         assert audit_call["exit_code"] == 1
 
-        # Verify failure notification was sent (mocked in setup)
-        mock_audit_and_notifications["notify_failure"].assert_called_once()
-        notify_call = mock_audit_and_notifications["notify_failure"].call_args[0]
+        # Verify failure notification was sent (using class's own mock)
+        self.mock_notify_failure.assert_called_once()
+        notify_call = self.mock_notify_failure.call_args[0]
         assert notify_call[0] == "docker_ps"  # tool_name
         assert notify_call[2] == 1  # exit_code
 

@@ -1,0 +1,129 @@
+# Canonical Runtime Container for BurlyMCP
+# This is the official Dockerfile for the deployable container image
+# 
+# Contract: This container MUST boot and serve /health and /mcp with:
+# docker run -p 9400:9400 ghcr.io/<org>/burlymcp:<tag>
+# 
+# Zero extra flags required for basic operation.
+
+FROM debian:trixie-slim
+
+# Install system dependencies
+# Note: Installing docker.io package for Docker CLI only, not dockerd daemon
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-venv \
+    python3-pip \
+    docker.io \
+    curl \
+    ca-certificates \
+    procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Verify that dockerd daemon is not installed/running
+# The docker.io package should only provide the CLI client
+RUN ! systemctl is-enabled docker 2>/dev/null || systemctl disable docker 2>/dev/null || true
+RUN ! systemctl is-active docker 2>/dev/null || systemctl stop docker 2>/dev/null || true
+
+# Create virtual environment at /opt/venv with proper PATH configuration
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Upgrade pip in virtual environment
+RUN /opt/venv/bin/pip install --upgrade pip setuptools wheel
+
+# Create dedicated mcp user (UID 1000, GID 1000)
+RUN groupadd --gid 1000 mcp && \
+    useradd --uid 1000 --gid mcp --shell /bin/bash --create-home mcp
+
+# Set working directory
+WORKDIR /app
+
+# Copy complete BurlyMCP source tree to /app/BurlyMCP
+COPY . /app/BurlyMCP/
+
+# Install BurlyMCP package with pip install -e .
+RUN cd /app/BurlyMCP && /opt/venv/bin/pip install -e .
+
+# Copy HTTP bridge, security validation, and startup scripts to /app/
+COPY http_bridge.py /app/
+COPY security_validation.py /app/
+COPY container_startup.py /app/
+RUN chmod +x /app/security_validation.py /app/container_startup.py
+RUN /opt/venv/bin/pip install fastapi uvicorn==0.30.6 slowapi
+
+# Verify that the default policy file is embedded in the container image
+# The image MUST bake in a working default policy file at a known path
+# Container startup MUST succeed if the operator does not mount a policy
+RUN test -f /app/BurlyMCP/config/policy/tools.yaml || \
+    (echo "ERROR: Default policy file not found at /app/BurlyMCP/config/policy/tools.yaml" && exit 1)
+
+# Create all required directories with proper permissions
+# These MUST be created at build time so startup doesn't die on missing dirs
+RUN mkdir -p \
+    /var/log/agentops \
+    /app/data/blog/stage \
+    /app/data/blog/publish \
+    && chown -R mcp:mcp /app /var/log/agentops \
+    && chmod 755 /app \
+    && chmod 750 /var/log/agentops \
+    && chmod 755 /app/data \
+    && chmod 755 /app/data/blog \
+    && chmod 755 /app/data/blog/stage \
+    && chmod 755 /app/data/blog/publish
+
+# Set up secure environment variables with container-internal defaults
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PATH="/opt/venv/bin:$PATH" \
+    POLICY_FILE=/app/BurlyMCP/config/policy/tools.yaml \
+    AUDIT_LOG_PATH=/var/log/agentops/audit.jsonl \
+    LOG_DIR=/var/log/agentops \
+    BLOG_STAGE_ROOT=/app/data/blog/stage \
+    BLOG_PUBLISH_ROOT=/app/data/blog/publish \
+    DOCKER_SOCKET=/var/run/docker.sock \
+    DOCKER_TIMEOUT=30 \
+    MAX_OUTPUT_SIZE=1048576 \
+    AUDIT_ENABLED=true \
+    NOTIFICATIONS_ENABLED=false \
+    SERVER_NAME=burlymcp \
+    SERVER_VERSION=1.0.0 \
+    STRICT_SECURITY_MODE=true \
+    PORT=9400 \
+    HOST=0.0.0.0
+
+# Expose port 9400
+EXPOSE 9400
+
+# Validate security configuration before switching to non-root user
+RUN echo "=== Security Configuration Validation ===" && \
+    echo "Checking mcp user exists..." && \
+    id mcp && \
+    echo "Checking directory permissions..." && \
+    ls -la /app && \
+    ls -la /var/log/agentops && \
+    echo "Checking policy file accessibility..." && \
+    test -r /app/BurlyMCP/config/policy/tools.yaml && \
+    echo "Security validation passed"
+
+# Switch to non-root user for security
+# The container entrypoint MUST run as the non-root mcp user
+# Running as root MUST NOT be required for normal (non-docker) operation
+USER mcp
+
+# Use container startup script for security validation and service management
+# Use exec form for proper signal handling (PID 1)
+CMD ["python3", "/app/container_startup.py"]
+
+# Security labels and metadata
+LABEL org.opencontainers.image.title="BurlyMCP Runtime Container" \
+      org.opencontainers.image.description="Standalone service container for BurlyMCP with HTTP endpoints" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.authors="BurlyMCP Team" \
+      org.opencontainers.image.source="https://github.com/Wolfeitz/BurlyMCP" \
+      org.opencontainers.image.licenses="MIT" \
+      security.non-root="true" \
+      security.user="mcp:1000" \
+      security.capabilities="minimal"
