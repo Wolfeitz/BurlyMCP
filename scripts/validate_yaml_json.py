@@ -43,6 +43,8 @@ class ValidationResult:
             print(f"\n❌ Invalid Files ({len(self.invalid_files)}):")
             for file_path, error in self.invalid_files:
                 print(f"  - {file_path}: {error}")
+            print(f"\n💡 Tip: Fix syntax errors in the files above.")
+            print("   Common issues: missing quotes, incorrect indentation, trailing commas")
         
         if self.warnings:
             print(f"\n⚠️  Warnings ({len(self.warnings)}):")
@@ -170,20 +172,38 @@ def validate_package_json(file_path: Path, content: Dict[str, Any]) -> List[str]
 def find_files(patterns: List[str], exclude_patterns: List[str] = None) -> List[Path]:
     """Find files matching the given patterns."""
     if exclude_patterns is None:
-        exclude_patterns = ['node_modules/**', '.git/**', '__pycache__/**', '.venv/**']
+        exclude_patterns = [
+            'node_modules/**', 
+            '.git/**', 
+            '__pycache__/**', 
+            '.venv/**',
+            '.pytest_cache/**',
+            '.ruff_cache/**',
+            'build/**',
+            'dist/**',
+            '*.egg-info/**'
+        ]
     
     files = []
     for pattern in patterns:
-        files.extend(Path('.').glob(pattern))
+        # Use rglob for recursive search to ensure we catch everything
+        if '**' in pattern:
+            files.extend(Path('.').rglob(pattern.replace('**/', '')))
+        else:
+            files.extend(Path('.').glob(pattern))
     
     # Filter out excluded patterns
     filtered_files = []
     for file_path in files:
         excluded = False
+        file_str = str(file_path)
+        
         for exclude_pattern in exclude_patterns:
-            if file_path.match(exclude_pattern):
+            # Handle both glob patterns and simple string matching
+            if file_path.match(exclude_pattern) or exclude_pattern.replace('/**', '') in file_str:
                 excluded = True
                 break
+        
         if not excluded and file_path.is_file():
             filtered_files.append(file_path)
     
@@ -205,15 +225,23 @@ def main():
         # Validate specific files
         files_to_check = [Path(f) for f in args.files if Path(f).exists()]
     else:
-        # Find all YAML/JSON files
+        # Find all YAML/JSON files with comprehensive patterns
         patterns = []
         if not args.json_only:
-            patterns.extend(['**/*.yml', '**/*.yaml'])
+            patterns.extend([
+                '**/*.yml', 
+                '**/*.yaml',
+                '*.yml',      # Root level files
+                '*.yaml'      # Root level files
+            ])
         if not args.yaml_only:
-            patterns.extend(['**/*.json'])
+            patterns.extend([
+                '**/*.json',
+                '*.json'      # Root level files
+            ])
         
         # Always include common config files
-        patterns.extend(['pyproject.toml'])
+        patterns.extend(['pyproject.toml', '*.toml', '**/*.toml'])
         
         files_to_check = find_files(patterns)
     
@@ -286,12 +314,18 @@ def main():
     
     # Determine exit code
     if result.has_errors():
+        if not args.quiet:
+            print(f"\n❌ Validation failed: {len(result.invalid_files)} invalid files found")
+            print("Fix the above errors before proceeding.")
         return 1
     elif args.strict and result.warnings:
         if not args.quiet:
-            print("\n❌ Validation failed due to warnings (strict mode)")
+            print(f"\n❌ Validation failed due to {len(result.warnings)} warnings (strict mode)")
+            print("Address the above warnings or run without --strict flag.")
         return 1
     else:
+        if not args.quiet:
+            print(f"\n✅ Validation successful: {len(result.valid_files)} files validated")
         return 0
 
 if __name__ == '__main__':
