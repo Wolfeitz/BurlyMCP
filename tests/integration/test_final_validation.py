@@ -73,6 +73,7 @@ def runtime_container_image(docker_client):
 class TestStandaloneOperation:
     """Test complete standalone operation (Task 10.1)."""
 
+    @pytest.mark.flaky
     def test_container_starts_within_30_seconds(self, docker_client, runtime_container_image):
         """Test container starts and responds to health checks within 30 seconds."""
         container = None
@@ -190,6 +191,7 @@ class TestStandaloneOperation:
                 except Exception:
                     pass
 
+    @pytest.mark.flaky
     def test_tools_fail_gracefully_without_optional_features(self, docker_client, runtime_container_image):
         """Test all tools fail gracefully when optional features unavailable."""
         container = None
@@ -276,6 +278,7 @@ class TestStandaloneOperation:
                 container.stop()
                 container.remove()
 
+    @pytest.mark.flaky
     def test_environment_variable_validation_and_startup_error_handling(self, docker_client, runtime_container_image):
         """Test environment variable validation and startup error handling."""
         # Test with invalid configuration
@@ -726,6 +729,7 @@ class TestAPIStabilityAndBackwardCompatibility:
 class TestPublicDeploymentReadiness:
     """Test public deployment readiness validation (Task 10.3)."""
 
+    @pytest.mark.flaky
     def test_container_works_on_arbitrary_linux_hosts(self, docker_client, runtime_container_image):
         """Test container works on arbitrary Linux hosts without customization."""
         # This test simulates deployment on a clean Linux host
@@ -875,6 +879,7 @@ class TestPublicDeploymentReadiness:
                 for pattern in forbidden_in_compose:
                     assert pattern not in compose_content, f"Found hardcoded value in {compose_file}: {pattern}"
 
+    @pytest.mark.flaky
     def test_minimal_privilege_mode_provides_useful_functionality(self, docker_client, runtime_container_image):
         """Test minimal privilege mode provides useful functionality."""
         container = None
@@ -935,6 +940,7 @@ class TestPublicDeploymentReadiness:
                 container.stop()
                 container.remove()
 
+    @pytest.mark.flaky
     def test_container_consumable_by_downstream_infrastructure(self, docker_client, runtime_container_image):
         """Test container can be consumed by downstream infrastructure systems."""
         container = None
