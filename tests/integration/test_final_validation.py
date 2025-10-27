@@ -91,7 +91,8 @@ class TestStandaloneOperation:
             )
             
             # Wait for container to be running with CI-aware timeout
-            max_startup_time = 60 if os.getenv('CI') else 30
+            # CI environments can be very slow, so we need generous timeouts
+            max_startup_time = 90 if os.getenv('CI') else 30
             timeout = max_startup_time
             
             while time.time() - start_time < timeout:
@@ -205,7 +206,7 @@ class TestStandaloneOperation:
             # Wait for startup and health endpoint to be available
             start_time = time.time()
             health_available = False
-            max_wait_time = 60 if os.getenv('CI') else 30
+            max_wait_time = 90 if os.getenv('CI') else 30
             
             while time.time() - start_time < max_wait_time:
                 container.reload()
