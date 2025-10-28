@@ -111,11 +111,11 @@ docs = [
 burly-mingo-mcp = "burly_mcp.server.main:main"
 
 [project.urls]
-Homepage = "https://github.com/Wolfeitz/BurlyMCP"
-Repository = "https://github.com/Wolfeitz/BurlyMCP"
-Issues = "https://github.com/Wolfeitz/BurlyMCP/issues"
-Documentation = "https://github.com/Wolfeitz/BurlyMCP/blob/main/README.md"
-Changelog = "https://github.com/Wolfeitz/BurlyMCP/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/wolfeitz/burlymcp"
+Repository = "https://github.com/wolfeitz/burlymcp"
+Issues = "https://github.com/wolfeitz/burlymcp/issues"
+Documentation = "https://github.com/wolfeitz/burlymcp/blob/main/README.md"
+Changelog = "https://github.com/wolfeitz/burlymcp/blob/main/CHANGELOG.md"
 
 [tool.setuptools.dynamic]
 version = {attr = "burly_mcp.__version__"}
