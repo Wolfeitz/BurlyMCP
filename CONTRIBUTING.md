@@ -23,8 +23,8 @@ Thank you for your interest in contributing to Burly MCP! This document provides
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/Wolfeitz/BurlyMCP.git
-   cd BurlyMCP
+   git clone https://github.com/wolfeitz/burlymcp.git
+   cd burlymcp
    ```
 
 2. **Create and activate a virtual environment:**

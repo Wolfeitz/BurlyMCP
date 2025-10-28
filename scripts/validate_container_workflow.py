@@ -56,8 +56,8 @@ def validate_workflow():
         print("❌ Registry should be ghcr.io")
         return False
     
-    if env.get('IMAGE_NAME') != '${{ github.repository }}':
-        print("❌ Image name should use github.repository")
+    if env.get('IMAGE_NAME') != 'wolfeitz/burlymcp':
+        print("❌ Image name should be 'wolfeitz/burlymcp' (lowercase format)")
         return False
     
     print("✅ Environment configuration: GHCR registry")
