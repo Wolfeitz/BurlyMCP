@@ -23,6 +23,10 @@ except ImportError:
     TestClient = None
 
 
+TEST_API_KEY = "unit-test-api-key"
+AUTH_HEADERS = {"X-Api-Key": TEST_API_KEY}
+
+
 @pytest.mark.unit
 @pytest.mark.http
 @pytest.mark.skipif(not HTTP_BRIDGE_AVAILABLE, reason="HTTP bridge not available")
@@ -284,8 +288,9 @@ class TestHTTPBridgeEndpoints:
     """Test HTTP bridge endpoints using FastAPI TestClient."""
 
     @pytest.fixture
-    def client(self, mock_http_bridge_config):
+    def client(self, mock_http_bridge_config, monkeypatch):
         """Create test client with mocked configuration."""
+        monkeypatch.setenv("BURLYMCP_API_KEY", TEST_API_KEY)
         return TestClient(app)
 
     @patch('http_bridge.test_mcp_engine', new_callable=AsyncMock)
@@ -306,7 +311,7 @@ class TestHTTPBridgeEndpoints:
         mock_notifications.return_value = False
         mock_policy.return_value = True
         
-        response = client.get("/health")
+        response = client.get("/health", headers=AUTH_HEADERS)
         
         assert response.status_code == 200
         data = response.json()
@@ -334,7 +339,7 @@ class TestHTTPBridgeEndpoints:
         mock_mcp_test.return_value = {"ok": False, "tools_count": 0}
         mock_policy.return_value = True
         
-        response = client.get("/health")
+        response = client.get("/health", headers=AUTH_HEADERS)
         
         assert response.status_code == 200
         data = response.json()
@@ -350,17 +355,80 @@ class TestHTTPBridgeEndpoints:
         import http_bridge
         http_bridge._health_cache = None
         http_bridge._health_cache_time = 0
-        
+
         # Mock both MCP engine and policy failure
         mock_mcp_test.return_value = {"ok": False, "tools_count": 0}
         mock_policy.return_value = False
-        
-        response = client.get("/health")
-        
+
+        response = client.get("/health", headers=AUTH_HEADERS)
+
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["status"] == "error"
+
+    @patch('http_bridge.test_mcp_engine', new_callable=AsyncMock)
+    @patch('http_bridge.check_docker_availability')
+    @patch('http_bridge.check_notifications_configured')
+    @patch('http_bridge.check_policy_loaded')
+    def test_health_alias_matches_primary(self, mock_policy, mock_notifications,
+                                         mock_docker, mock_mcp_test, client):
+        """Ensure /v1/health alias reuses the primary handler."""
+        import http_bridge
+        http_bridge._health_cache = None
+        http_bridge._health_cache_time = 0
+
+        mock_mcp_test.return_value = {"ok": True, "tools_count": 2}
+        mock_docker.return_value = True
+        mock_notifications.return_value = True
+        mock_policy.return_value = True
+
+        base = client.get("/health", headers=AUTH_HEADERS)
+        alias = client.get("/v1/health", headers=AUTH_HEADERS)
+
+        assert alias.status_code == 200
+        assert alias.json() == base.json()
+
+    def test_health_endpoint_requires_api_key(self, client):
+        """Test that /health endpoint enforces API key when configured."""
+        response = client.get("/health")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["ok"] is False
+        assert data["summary"] == "Authentication required"
+        assert data["error"]["code"] == "AUTH_REQUIRED"
+
+    def test_health_endpoint_rejects_incorrect_api_key(self, client):
+        """Test that /health returns AUTH_REQUIRED when key does not match."""
+        bad_headers = {"X-Api-Key": "not-the-key"}
+
+        response = client.get("/health", headers=bad_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["ok"] is False
+        assert data["error"]["code"] == "AUTH_REQUIRED"
+
+    def test_health_alias_requires_api_key(self, client):
+        """Test that /v1/health alias enforces API key."""
+        response = client.get("/v1/health")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["error"]["code"] == "AUTH_REQUIRED"
+
+    def test_health_alias_rejects_incorrect_api_key(self, client):
+        """Test that /v1/health alias returns AUTH_REQUIRED for wrong key."""
+        bad_headers = {"X-Api-Key": "not-the-key"}
+
+        response = client.get("/v1/health", headers=bad_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["error"]["code"] == "AUTH_REQUIRED"
 
     @patch('http_bridge.forward_to_mcp_engine')
     def test_mcp_endpoint_list_tools(self, mock_forward, client, mock_mcp_engine_response):
@@ -373,7 +441,7 @@ class TestHTTPBridgeEndpoints:
             "params": {}
         }
         
-        response = client.post("/mcp", json=request_data)
+        response = client.post("/mcp", json=request_data, headers=AUTH_HEADERS)
         
         assert response.status_code == 200
         data = response.json()
@@ -396,7 +464,7 @@ class TestHTTPBridgeEndpoints:
             "args": {"path": "/"}
         }
         
-        response = client.post("/mcp", json=request_data)
+        response = client.post("/mcp", json=request_data, headers=AUTH_HEADERS)
         
         assert response.status_code == 200
         data = response.json()
@@ -423,7 +491,7 @@ class TestHTTPBridgeEndpoints:
             }
         }
         
-        response = client.post("/mcp", json=request_data)
+        response = client.post("/mcp", json=request_data, headers=AUTH_HEADERS)
         
         assert response.status_code == 200
         data = response.json()
@@ -448,7 +516,7 @@ class TestHTTPBridgeEndpoints:
             "args": {}
         }
         
-        response = client.post("/mcp", json=request_data)
+        response = client.post("/mcp", json=request_data, headers=AUTH_HEADERS)
         
         # Should still return HTTP 200 (per requirements)
         assert response.status_code == 200
@@ -466,7 +534,7 @@ class TestHTTPBridgeEndpoints:
             "method": "invalid_method"
         }
         
-        response = client.post("/mcp", json=request_data)
+        response = client.post("/mcp", json=request_data, headers=AUTH_HEADERS)
         
         # Should return HTTP 200 with error in body (per MCP bridge design)
         assert response.status_code == 200
@@ -483,7 +551,7 @@ class TestHTTPBridgeEndpoints:
             "args": {}
         }
         
-        response = client.post("/mcp", json=request_data)
+        response = client.post("/mcp", json=request_data, headers=AUTH_HEADERS)
         
         # Should return HTTP 200 with error in body (per MCP bridge design)
         assert response.status_code == 200
@@ -502,7 +570,7 @@ class TestHTTPBridgeEndpoints:
             "args": {"large_field": large_data}
         }
         
-        response = client.post("/mcp", json=request_data)
+        response = client.post("/mcp", json=request_data, headers=AUTH_HEADERS)
         
         # Should return HTTP 200 with error in body (per requirements)
         assert response.status_code == 200
@@ -523,7 +591,7 @@ class TestHTTPBridgeEndpoints:
             "params": {}
         }
         
-        response = client.post("/mcp", json=request_data)
+        response = client.post("/mcp", json=request_data, headers=AUTH_HEADERS)
         
         # Should still return HTTP 200 (per requirements)
         assert response.status_code == 200
@@ -533,6 +601,97 @@ class TestHTTPBridgeEndpoints:
         assert "processing failed" in data["summary"].lower()
         assert "metrics" in data
         assert data["metrics"]["exit_code"] == 1
+
+    @patch('http_bridge.forward_to_mcp_engine')
+    def test_mcp_endpoint_requires_api_key(self, mock_forward, client, mock_mcp_engine_response):
+        """Test that /mcp endpoint enforces API key header."""
+        mock_forward.return_value = mock_mcp_engine_response
+
+        request_data = {
+            "id": "test-auth",
+            "method": "list_tools",
+            "params": {}
+        }
+
+        response = client.post("/mcp", json=request_data)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["error"]["code"] == "AUTH_REQUIRED"
+        mock_forward.assert_not_called()
+
+    @patch('http_bridge.forward_to_mcp_engine')
+    def test_mcp_endpoint_rejects_incorrect_api_key(self, mock_forward, client, mock_mcp_engine_response):
+        """Test that /mcp returns AUTH_REQUIRED when key mismatches."""
+        mock_forward.return_value = mock_mcp_engine_response
+
+        request_data = {
+            "id": "test-auth-wrong",
+            "method": "list_tools",
+            "params": {}
+        }
+        bad_headers = {"X-Api-Key": "not-the-key"}
+
+        response = client.post("/mcp", json=request_data, headers=bad_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["error"]["code"] == "AUTH_REQUIRED"
+        mock_forward.assert_not_called()
+
+    @patch('http_bridge.forward_to_mcp_engine')
+    def test_mcp_alias_matches_primary(self, mock_forward, client, mock_mcp_engine_response):
+        """Ensure /v1/mcp alias reuses the primary handler."""
+        mock_forward.return_value = mock_mcp_engine_response
+
+        request_data = {
+            "id": "test-alias",
+            "method": "list_tools",
+            "params": {}
+        }
+
+        base = client.post("/mcp", json=request_data, headers=AUTH_HEADERS)
+        alias = client.post("/v1/mcp", json=request_data, headers=AUTH_HEADERS)
+
+        assert alias.status_code == 200
+        assert alias.json() == base.json()
+
+    @patch('http_bridge.forward_to_mcp_engine')
+    def test_mcp_alias_requires_api_key(self, mock_forward, client, mock_mcp_engine_response):
+        """Test that /v1/mcp alias enforces API key header."""
+        mock_forward.return_value = mock_mcp_engine_response
+
+        request_data = {
+            "id": "test-auth-alias",
+            "method": "list_tools",
+            "params": {}
+        }
+
+        response = client.post("/v1/mcp", json=request_data)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["error"]["code"] == "AUTH_REQUIRED"
+        mock_forward.assert_not_called()
+
+    @patch('http_bridge.forward_to_mcp_engine')
+    def test_mcp_alias_rejects_incorrect_api_key(self, mock_forward, client, mock_mcp_engine_response):
+        """Test that /v1/mcp alias returns AUTH_REQUIRED for wrong key."""
+        mock_forward.return_value = mock_mcp_engine_response
+
+        request_data = {
+            "id": "test-auth-alias-wrong",
+            "method": "list_tools",
+            "params": {}
+        }
+        bad_headers = {"X-Api-Key": "not-the-key"}
+
+        response = client.post("/v1/mcp", json=request_data, headers=bad_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["error"]["code"] == "AUTH_REQUIRED"
+        mock_forward.assert_not_called()
 
 
 @pytest.mark.unit

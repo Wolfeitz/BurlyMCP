@@ -4,9 +4,35 @@ This document defines the external API contract for the BurlyMCP HTTP Bridge. Th
 
 ## Overview
 
-The BurlyMCP HTTP Bridge provides two primary endpoints:
-- `GET /health` - Service health and status information
-- `POST /mcp` - MCP protocol communication via HTTP
+The BurlyMCP HTTP Bridge provides two primary endpoints (with versioned aliases):
+- `GET /health` and `GET /v1/health` - Service health and status information
+- `POST /mcp` and `POST /v1/mcp` - MCP protocol communication via HTTP
+
+## Authentication
+
+Authentication is optional but strongly recommended. When the `BURLYMCP_API_KEY`
+environment variable is set, the bridge requires every request to `/health`,
+`/v1/health`, `/mcp`, and `/v1/mcp` to include the header `X-Api-Key` with the
+matching value. Requests missing the header (or presenting an incorrect value)
+receive an HTTP 200 response with the standard envelope and
+`error.code = "AUTH_REQUIRED"`.
+
+**Authentication Failure Envelope:**
+
+```json
+{
+  "ok": false,
+  "summary": "Authentication required",
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "Missing or invalid API key"
+  },
+  "metrics": {
+    "elapsed_ms": 0,
+    "exit_code": 1
+  }
+}
+```
 
 ## Core Principles
 
@@ -103,8 +129,8 @@ All responses follow this standardized envelope format:
   "need_confirm": boolean,
   "data": object,
   "stdout": "string",
-  "stderr": "string", 
-  "error": "string",
+  "stderr": "string",
+  "error": "string | {\"code\": string, \"message\": string}",
   "metrics": {
     "elapsed_ms": number,
     "exit_code": number
@@ -123,7 +149,9 @@ All responses follow this standardized envelope format:
 - `data`: Structured response data (object)
 - `stdout`: Command standard output (string)
 - `stderr`: Command standard error (string)
-- `error`: Error message for failed operations (string)
+- `error`: Error information for failed operations. Most responses return a
+  string message; authentication failures return an object with `code` and
+  `message` fields for machine-readable handling.
 
 ## API Examples
 
@@ -133,6 +161,7 @@ All responses follow this standardized envelope format:
 ```bash
 curl -X POST http://localhost:9400/mcp \
   -H "Content-Type: application/json" \
+  -H "X-Api-Key: ${BURLYMCP_API_KEY:-example}" \
   -d '{
     "id": "list-1",
     "method": "list_tools",
@@ -180,6 +209,7 @@ curl -X POST http://localhost:9400/mcp \
 ```bash
 curl -X POST http://localhost:9400/mcp \
   -H "Content-Type: application/json" \
+  -H "X-Api-Key: ${BURLYMCP_API_KEY:-example}" \
   -d '{
     "id": "disk-1",
     "method": "call_tool",
