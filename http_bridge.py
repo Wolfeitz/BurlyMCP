@@ -28,10 +28,11 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field, validator
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # Rate limiting imports - conditional based on availability
 try:
@@ -250,6 +251,45 @@ def _validate_args_complexity(obj: Any, max_depth: int, max_items: int, current_
             raise ValueError("String value too long")
 
 
+# Paths that should share /mcp contract behavior
+MCP_ENDPOINT_PATHS = {"/mcp", "/v1/mcp"}
+PROTECTED_PATHS = MCP_ENDPOINT_PATHS | {"/health", "/v1/health"}
+
+
+def _normalize_path(path: str) -> str:
+    """Normalize request paths for comparison."""
+    if path.endswith("/") and path != "/":
+        return path[:-1]
+    return path
+
+
+def _build_auth_error_response() -> Dict[str, Any]:
+    """Create standardized authentication error envelope."""
+    return {
+        "ok": False,
+        "summary": "Authentication required",
+        "error": {
+            "code": "AUTH_REQUIRED",
+            "message": "Missing or invalid API key"
+        },
+        "metrics": {"elapsed_ms": 0, "exit_code": 1}
+    }
+
+
+class APIKeyAuthMiddleware(BaseHTTPMiddleware):
+    """Middleware enforcing API key authentication for protected endpoints."""
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        expected_key = os.environ.get("BURLYMCP_API_KEY")
+        if expected_key:
+            path = _normalize_path(request.url.path)
+            if path in PROTECTED_PATHS:
+                provided_key = request.headers.get("X-Api-Key")
+                if provided_key != expected_key:
+                    return JSONResponse(status_code=200, content=_build_auth_error_response())
+        return await call_next(request)
+
+
 # Initialize FastAPI application
 app = FastAPI(
     title="BurlyMCP HTTP Bridge",
@@ -258,6 +298,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+app.add_middleware(APIKeyAuthMiddleware)
 
 # Initialize rate limiting if available and enabled
 rate_limiter = None
@@ -689,8 +731,17 @@ async def health_check():
     
     logger.debug(f"Health check: status={status}, mcp_healthy={mcp_healthy}, "
                 f"policy_loaded={policy_loaded}, tools={tools_count}")
-    
+
     return HealthResponse(**health_data)
+
+
+app.add_api_route(
+    "/v1/health",
+    health_check,
+    methods=["GET"],
+    response_model=HealthResponse,
+    tags=["health"]
+)
 
 
 async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
@@ -700,7 +751,7 @@ async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded)
     This ensures rate limit errors are returned as HTTP 200 with structured
     JSON response, maintaining the API contract for /mcp endpoint.
     """
-    if request.url.path == "/mcp":
+    if _normalize_path(request.url.path) in MCP_ENDPOINT_PATHS:
         # For /mcp endpoint, return structured error envelope
         error_response = {
             "ok": False,
@@ -836,6 +887,9 @@ async def mcp_endpoint(request: Request, mcp_request: MCPRequest):
         )
 
 
+app.add_api_route("/v1/mcp", mcp_endpoint, methods=["POST"], tags=["mcp"])
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """
@@ -845,7 +899,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     
     # For /mcp endpoint, always return HTTP 200 with error envelope
-    if request.url.path == "/mcp":
+    if _normalize_path(request.url.path) in MCP_ENDPOINT_PATHS:
         error_response = {
             "ok": False,
             "summary": "Internal server error",
@@ -872,7 +926,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     Handle validation errors to ensure /mcp endpoint always returns HTTP 200.
     """
     # For /mcp endpoint, return HTTP 200 with structured error
-    if request.url.path == "/mcp":
+    if _normalize_path(request.url.path) in MCP_ENDPOINT_PATHS:
         # Convert validation errors to JSON-serializable format
         validation_errors = []
         error_message = "Invalid request format or parameters"

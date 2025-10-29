@@ -34,8 +34,8 @@ BurlyMCP is distributed as a standalone service container that exposes HTTP endp
 
 **Official Interface:**
 - **Port**: 9400 (HTTP)
-- **Health Check**: `GET /health` - Returns service status and capabilities
-- **MCP Endpoint**: `POST /mcp` - Accepts MCP protocol requests via HTTP
+- **Health Check**: `GET /health` (alias: `GET /v1/health`) - Returns service status and capabilities
+- **MCP Endpoint**: `POST /mcp` (alias: `POST /v1/mcp`) - Accepts MCP protocol requests via HTTP
 - **Process**: Runs as PID 1 with graceful shutdown on SIGTERM (≤10 seconds)
 
 **Published Images:**
@@ -47,19 +47,30 @@ BurlyMCP is distributed as a standalone service container that exposes HTTP endp
 This sequence works on any clean Linux box with only Docker installed:
 
 ```bash
-# Start the container
-docker run --rm -p 9400:9400 ghcr.io/wolfeitz/burlymcp:main
+# (Recommended) Set an API key for HTTP calls
+export BURLYMCP_API_KEY=example-key
 
-# Test health endpoint
-curl http://127.0.0.1:9400/health
+# Start the container (omit the env var if you want to disable auth for local tests)
+docker run --rm -p 9400:9400 \
+  -e BURLYMCP_API_KEY=$BURLYMCP_API_KEY \
+  ghcr.io/wolfeitz/burlymcp:main
+
+# Test health endpoint (include the header only when an API key is configured)
+curl http://127.0.0.1:9400/health \
+  -H "X-Api-Key: $BURLYMCP_API_KEY"
 
 # Test MCP functionality
 curl -X POST http://127.0.0.1:9400/mcp \
   -H 'content-type: application/json' \
+  -H "X-Api-Key: $BURLYMCP_API_KEY" \
   -d '{"id":"1","method":"list_tools","params":{}}'
 ```
 
 The container starts successfully without any external dependencies, configuration files, or elevated privileges.
+
+> **Note:** All subsequent `curl` examples assume you export `BURLYMCP_API_KEY`
+> and include `-H "X-Api-Key: $BURLYMCP_API_KEY"` when the container is
+> configured with an API key. Remove the header if authentication is disabled.
 
 ### Deployment Options
 
@@ -113,6 +124,7 @@ docker run -d --name burlymcp \
 - `GOTIFY_TOKEN` - Gotify application token [default: disabled]
 
 **Security:**
+- `BURLYMCP_API_KEY` - Shared secret required via `X-Api-Key` header for `/health` and `/mcp` (and `/v1/*` aliases) [default: disabled]
 - `STRICT_SECURITY_MODE` - Enable strict security validation [default: true]
 - `RATE_LIMIT_DISABLED` - Disable API rate limiting for lab use [default: false]
 
