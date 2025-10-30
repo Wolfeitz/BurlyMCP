@@ -813,7 +813,7 @@ class TestPublicDeploymentReadiness:
             
             # Check configuration files for hardcoded values
             config_files = [
-                "/app/BurlyMCP/config/policy/tools.yaml",
+                "/config/policy/tools.yaml",
                 "/app/http_bridge.py"
             ]
             

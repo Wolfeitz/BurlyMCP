@@ -182,7 +182,7 @@ class SecurityConfig:
         """Validate file permissions for security"""
         sensitive_files = [
             '/run/secrets/gotify_token',
-            '/app/config/policy/tools.yaml'
+            '/config/policy/tools.yaml'
         ]
         for file_path in sensitive_files:
             path = Path(file_path)

@@ -6,12 +6,15 @@ It ensures that only whitelisted tools can be executed and that all tool
 arguments are validated against their defined schemas.
 """
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import Any
 
 import jsonschema
 import yaml
+
+from .dir_loader import load_tools_from_sources
 
 
 class PolicyLoadError(Exception):
@@ -89,6 +92,8 @@ class PolicyLoader:
             PolicyLoadError: If file cannot be read or parsed
             PolicyValidationError: If policy content is invalid
         """
+        logger = logging.getLogger(__name__)
+
         try:
             # Validate and canonicalize policy file path
             canonical_path = os.path.realpath(self.policy_file_path)
@@ -133,8 +138,58 @@ class PolicyLoader:
             # Validate policy structure
             self._validate_policy_structure(policy_data)
 
+            # Load tools from legacy file plus directory overrides
+            merged_tools, loader_stats = load_tools_from_sources(
+                logger=logger,
+                policy_file_override=self.policy_file_path,
+            )
+
+            enabled_tool_map: dict[str, dict[str, Any]] = {}
+            disabled_tools: list[str] = []
+
+            for tool in merged_tools:
+                name = (tool or {}).get("name")
+                if not name:
+                    continue
+
+                if tool.get("enabled") is False:
+                    disabled_tools.append(name)
+                    continue
+
+                normalized = dict(tool)
+                normalized.pop("name", None)
+                normalized.pop("enabled", None)
+
+                # Support alternate field names used by directory configs
+                if "mutates" not in normalized and "mutating" in normalized:
+                    normalized["mutates"] = bool(normalized.pop("mutating"))
+
+                enabled_tool_map[name] = normalized
+
+            loader_stats["enabled_tools"] = len(enabled_tool_map)
+            loader_stats["disabled_tools"] = len(disabled_tools)
+
+            if disabled_tools:
+                logger.info(
+                    "Policy tools disabled via configuration: %s",
+                    ", ".join(sorted(disabled_tools)),
+                )
+
+            invalid_entries = loader_stats.get("invalid", [])
+            if invalid_entries:
+                logger.warning(
+                    "Skipped %d invalid policy definitions", len(invalid_entries)
+                )
+
+            logger.info(
+                "Policy tools active: enabled=%d disabled=%d invalid=%d",
+                loader_stats.get("enabled_tools", 0),
+                loader_stats.get("disabled_tools", 0),
+                len(invalid_entries),
+            )
+
             # Load tools
-            self._load_tools(policy_data.get("tools", {}))
+            self._load_tools(enabled_tool_map)
 
             # Load global configuration
             self._load_config(policy_data.get("config", {}))
@@ -163,8 +218,8 @@ class PolicyLoader:
         if "tools" not in policy_data:
             raise PolicyValidationError("Policy file must contain 'tools' section")
 
-        if not isinstance(policy_data["tools"], dict):
-            raise PolicyValidationError("'tools' section must be an object")
+        if not isinstance(policy_data["tools"], (dict, list)):
+            raise PolicyValidationError("'tools' section must be an object or list")
 
         if "config" in policy_data and not isinstance(policy_data["config"], dict):
             raise PolicyValidationError("'config' section must be an object")
