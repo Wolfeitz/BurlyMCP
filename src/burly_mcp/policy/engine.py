@@ -83,6 +83,7 @@ class PolicyLoader:
         self._tools: dict[str, ToolDefinition] = {}
         self._config: PolicyConfig | None = None
         self._loaded = False
+        self._loader_stats: dict[str, Any] | None = None
 
     def load_policy(self) -> None:
         """
@@ -179,6 +180,9 @@ class PolicyLoader:
                 policy_file_override=self.policy_file_path,
             )
 
+            # Persist loader stats for diagnostics and testing.
+            self._loader_stats = dict(loader_stats)
+
             enabled_tool_map: dict[str, dict[str, Any]] = {}
             disabled_tools: list[str] = []
 
@@ -258,6 +262,11 @@ class PolicyLoader:
 
         if "config" in policy_data and not isinstance(policy_data["config"], dict):
             raise PolicyValidationError("'config' section must be an object")
+
+    def get_loader_stats(self) -> dict[str, Any] | None:
+        """Return the most recent loader statistics snapshot."""
+
+        return dict(self._loader_stats) if self._loader_stats is not None else None
 
     def _load_tools(self, tools_data: dict[str, Any]) -> None:
         """

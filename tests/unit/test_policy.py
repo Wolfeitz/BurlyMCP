@@ -199,6 +199,12 @@ class TestPolicyLoader:
             assert merged_tool.command == ["echo", "dir-v2"]
             assert merged_tool.timeout_sec == 10
 
+            stats = loader.get_loader_stats()
+            assert stats is not None
+            assert stats.get("from_file_count") == 1
+            assert stats.get("from_dir_files") == 2
+            assert stats.get("from_dir_tools") == 3
+
     def test_policy_loader_handles_missing_file_with_directory_only(self, monkeypatch):
         """Directory-based configs should load even if the legacy file is absent."""
         from burly_mcp.policy.engine import PolicyLoader
