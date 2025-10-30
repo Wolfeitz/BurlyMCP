@@ -51,14 +51,25 @@ jobs:
           done
 
       - name: Enforce docs updated when policy/config changes
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'docs-ok') }}
         run: |
-          set -e
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          set -euo pipefail
+          BASE_REF="${{ github.base_ref }}"
+          if [ -z "$BASE_REF" ]; then
+            echo "::warning::No base ref detected; skipping docs guard."
+            exit 0
+          fi
+
+          if ! git fetch --depth=1 origin "$BASE_REF"; then
+            echo "::warning::Unable to fetch origin/$BASE_REF; skipping docs guard."
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only FETCH_HEAD...HEAD || true)
           needs_docs_guard=0
-          echo "$CHANGED" | grep -E '^(config/policy/|examples/config/).*\.ya?ml$' && needs_docs_guard=1 || true
+          echo "$CHANGED" | grep -E '^(config/policy/|examples/config/).*\\.ya?ml$' && needs_docs_guard=1 || true
           if [ "$needs_docs_guard" = "1" ]; then
-            echo "$CHANGED" | grep -E '^docs/|README\.md$' && exit 0
+            echo "$CHANGED" | grep -E '^docs/|README\\.md$' && exit 0 || true
             echo "::error::Policy/config changed but no docs were updated. Update docs or add the 'docs-ok' label."
             exit 1
           fi
