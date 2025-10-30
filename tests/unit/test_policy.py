@@ -199,6 +199,43 @@ class TestPolicyLoader:
             assert merged_tool.command == ["echo", "dir-v2"]
             assert merged_tool.timeout_sec == 10
 
+    def test_policy_loader_handles_missing_file_with_directory_only(self, monkeypatch):
+        """Directory-based configs should load even if the legacy file is absent."""
+        from burly_mcp.policy.engine import PolicyLoader
+
+        with tempfile.TemporaryDirectory(dir=".") as temp_dir:
+            policy_dir = os.path.join(temp_dir, "tools.d")
+            os.makedirs(policy_dir, exist_ok=True)
+
+            pack = {
+                "tools": [
+                    {
+                        "name": "dir_tool",
+                        "description": "configured from directory",
+                        "args_schema": {"type": "object"},
+                        "command": ["echo", "dir"],
+                        "mutating": False,
+                        "requires_confirm": False,
+                        "timeout_sec": 15,
+                    }
+                ]
+            }
+
+            with open(os.path.join(policy_dir, "050-dir.yaml"), "w", encoding="utf-8") as handle:
+                yaml.safe_dump(pack, handle)
+
+            missing_file = os.path.join(temp_dir, "policy.yaml")
+
+            monkeypatch.setenv("POLICY_DIR", policy_dir)
+
+            loader = PolicyLoader(missing_file)
+            loader.load_policy()
+
+            dir_tool = loader.get_tool_definition("dir_tool")
+            assert dir_tool is not None
+            assert dir_tool.command == ["echo", "dir"]
+            assert dir_tool.timeout_sec == 15
+
     def test_policy_loader_accepts_absolute_policy_file_outside_repo(self, monkeypatch):
         """Absolute policy paths provided via env should be permitted."""
         from burly_mcp.policy.engine import PolicyLoader

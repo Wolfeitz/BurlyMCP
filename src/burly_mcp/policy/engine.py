@@ -129,27 +129,36 @@ class PolicyLoader:
             if any(component in ["..", ".", "~"] for component in path_components):
                 raise PolicyLoadError("Policy file path contains suspicious components")
 
-            # Check if policy file exists
-            if not os.path.exists(canonical_path):
-                raise PolicyLoadError("Policy file not found")
+            policy_data: dict[str, Any] = {"tools": {}}
 
-            # Update to use canonical path
-            self.policy_file_path = canonical_path
+            if os.path.exists(canonical_path):
+                # Update to use canonical path
+                self.policy_file_path = canonical_path
 
-            # Read and parse YAML file with size limits
-            file_size = os.path.getsize(self.policy_file_path)
-            if file_size > 1024 * 1024:  # 1MB limit
-                raise PolicyLoadError("Policy file exceeds maximum size limit")
+                # Read and parse YAML file with size limits
+                file_size = os.path.getsize(self.policy_file_path)
+                if file_size > 1024 * 1024:  # 1MB limit
+                    raise PolicyLoadError("Policy file exceeds maximum size limit")
 
-            with open(self.policy_file_path, encoding="utf-8") as f:
-                content = f.read(1024 * 1024)  # Additional read limit
-                try:
-                    # Use safe_load with custom loader to prevent YAML bombs
-                    policy_data = yaml.safe_load(content)
-                    if policy_data is None:
-                        raise PolicyLoadError("Policy file is empty or invalid")
-                except yaml.YAMLError:
-                    raise PolicyLoadError("Policy file contains invalid YAML syntax")
+                with open(self.policy_file_path, encoding="utf-8") as f:
+                    content = f.read(1024 * 1024)  # Additional read limit
+                    try:
+                        # Use safe_load with custom loader to prevent YAML bombs
+                        parsed = yaml.safe_load(content)
+                        if parsed is None:
+                            raise PolicyLoadError("Policy file is empty or invalid")
+                        if not isinstance(parsed, dict):
+                            raise PolicyLoadError("Policy file must contain a YAML object")
+                        policy_data = parsed
+                    except yaml.YAMLError:
+                        raise PolicyLoadError("Policy file contains invalid YAML syntax")
+            else:
+                # Use canonical path for downstream logging and directory loading
+                self.policy_file_path = canonical_path
+                logger.info(
+                    "Policy file not found at %s; continuing with directory configurations only",
+                    canonical_path,
+                )
 
             # Validate policy structure
             self._validate_policy_structure(policy_data)
