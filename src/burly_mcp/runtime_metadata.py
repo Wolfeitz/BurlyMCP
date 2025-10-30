@@ -15,7 +15,7 @@ import functools
 import logging
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404 - safe usage with fixed git command
 from typing import Dict
 
 
@@ -42,7 +42,7 @@ def _detect_git_sha() -> str:
             LOGGER.debug("Git executable not found on PATH while detecting SHA")
             return "unknown"
 
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 - fixed command to git executable
             [git_executable, "rev-parse", "HEAD"],
             check=True,
             capture_output=True,
