@@ -12,9 +12,14 @@ for every response emitted by the bridge and MCP engine.
 from __future__ import annotations
 
 import functools
+import logging
 import os
+import shutil
 import subprocess
 from typing import Dict
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _detect_package_version() -> str:
@@ -32,8 +37,13 @@ def _detect_git_sha() -> str:
     """Detect the git SHA for the current checkout if available."""
 
     try:
+        git_executable = shutil.which("git")
+        if not git_executable:
+            LOGGER.debug("Git executable not found on PATH while detecting SHA")
+            return "unknown"
+
         result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
+            [git_executable, "rev-parse", "HEAD"],
             check=True,
             capture_output=True,
             text=True,
@@ -41,8 +51,8 @@ def _detect_git_sha() -> str:
         sha = result.stdout.strip()
         if sha:
             return sha
-    except Exception:
-        pass
+    except (subprocess.SubprocessError, OSError) as exc:
+        LOGGER.debug("Failed to detect git SHA", exc_info=exc)
 
     return "unknown"
 
