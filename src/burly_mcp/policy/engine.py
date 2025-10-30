@@ -14,7 +14,7 @@ from typing import Any
 import jsonschema
 import yaml
 
-from .dir_loader import DEFAULT_POLICY_FILE, load_tools_from_sources
+from .dir_loader import load_tools_from_sources
 
 
 class PolicyLoadError(Exception):
@@ -182,6 +182,56 @@ class PolicyLoader:
 
             # Persist loader stats for diagnostics and testing.
             self._loader_stats = dict(loader_stats)
+
+            enabled_tool_map: dict[str, dict[str, Any]] = {}
+            disabled_tools: list[str] = []
+
+            for tool in merged_tools:
+                name = (tool or {}).get("name")
+                if not name:
+                    continue
+
+                if tool.get("enabled") is False:
+                    disabled_tools.append(name)
+                    continue
+
+                normalized = dict(tool)
+                normalized.pop("name", None)
+                normalized.pop("enabled", None)
+
+                # Support alternate field names used by directory configs
+                if "mutates" not in normalized and "mutating" in normalized:
+                    normalized["mutates"] = bool(normalized.pop("mutating"))
+
+                enabled_tool_map[name] = normalized
+
+            loader_stats["enabled_tools"] = len(enabled_tool_map)
+            loader_stats["disabled_tools"] = len(disabled_tools)
+
+            if disabled_tools:
+                logger.info(
+                    "Policy tools disabled via configuration: %s",
+                    ", ".join(sorted(disabled_tools)),
+                )
+
+            invalid_entries = loader_stats.get("invalid", [])
+            if invalid_entries:
+                logger.warning(
+                    "Skipped %d invalid policy definitions", len(invalid_entries)
+                )
+
+            logger.info(
+                "Policy tools active: enabled=%d disabled=%d invalid=%d",
+                loader_stats.get("enabled_tools", 0),
+                loader_stats.get("disabled_tools", 0),
+                len(invalid_entries),
+            )
+
+            # Load tools from legacy file plus directory overrides
+            merged_tools, loader_stats = load_tools_from_sources(
+                logger=logger,
+                policy_file_override=self.policy_file_path,
+            )
 
             enabled_tool_map: dict[str, dict[str, Any]] = {}
             disabled_tools: list[str] = []
