@@ -14,7 +14,7 @@ import sys
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 if TYPE_CHECKING:
     from ..tools.registry import ToolRegistry
@@ -85,7 +85,8 @@ class MCPResponse:
     stdout: str = ""
     stderr: str = ""
     metrics: dict[str, Any] | None = None
-    error: str | None = None
+    error: Union[str, Dict[str, Any], None] = None
+    meta: Dict[str, str] | None = None
 
     def __post_init__(self) -> None:
         """
@@ -104,6 +105,19 @@ class MCPResponse:
         # Ensure exit_code is present for completed operations
         if "exit_code" not in self.metrics:
             self.metrics["exit_code"] = 0 if self.ok else 1
+
+        # Attach canonical metadata block
+        if self.meta is None:
+            try:
+                from ..runtime_metadata import get_response_metadata
+
+                self.meta = get_response_metadata()
+            except Exception:
+                self.meta = {
+                    "api_version": "v1",
+                    "container_version": "dev",
+                    "git_sha": "unknown",
+                }
 
         # Truncate long output if necessary (following design requirements)
         self._truncate_output()
@@ -147,33 +161,109 @@ class MCPResponse:
         Returns:
             Dictionary representation suitable for JSON serialization
         """
-        # Core response envelope - always present
-        result = {"ok": self.ok, "summary": self.summary}
+        metrics = dict(self.metrics or {})
+        metrics.setdefault("elapsed_ms", 0)
+        metrics.setdefault("exit_code", 0 if self.ok else 1)
 
-        # Add confirmation requirement if needed
-        if self.need_confirm:
-            result["need_confirm"] = self.need_confirm
+        envelope: Dict[str, Any] = {
+            "ok": self.ok,
+            "metrics": metrics,
+            "meta": dict(self.meta or {}),
+        }
 
-        # Add error information for failed operations
-        if not self.ok and self.error:
-            result["error"] = self.error
+        # Build result payload when operation succeeded or additional
+        # confirmation context needs to be returned to the caller.
+        if self.ok or self.need_confirm:
+            result_payload: Dict[str, Any] = {"summary": self.summary}
 
-        # Add structured data if present
-        if self.data is not None:
-            result["data"] = self.data
+            if self.need_confirm:
+                confirmation: Dict[str, Any] = {"required": True}
 
-        # Add command output if present
-        if self.stdout:
-            result["stdout"] = self.stdout
+                if isinstance(self.data, dict) and self.data:
+                    confirmation["details"] = self.data
 
-        if self.stderr:
-            result["stderr"] = self.stderr
+                if self.error:
+                    if isinstance(self.error, dict):
+                        confirmation.setdefault("message", self.error.get("message", ""))
+                        if "code" in self.error:
+                            confirmation.setdefault("code", self.error["code"])
+                    else:
+                        confirmation.setdefault("message", self.error)
 
-        # Always include metrics for monitoring
-        if self.metrics:
-            result["metrics"] = self.metrics
+                result_payload["need_confirm"] = confirmation
+            elif self.data is not None:
+                result_payload["data"] = self.data
 
-        return result
+            if self.stdout:
+                result_payload["stdout"] = self.stdout
+
+            if self.stderr:
+                result_payload["stderr"] = self.stderr
+
+            envelope["result"] = result_payload
+
+        # Build error payload for failed operations that are not strictly
+        # confirmation prompts.
+        error_payload_raw: Optional[Dict[str, Any]] = None
+        if not self.ok:
+            error_payload: Dict[str, Any] = {"summary": self.summary}
+
+            if isinstance(self.error, dict):
+                error_payload.update(self.error)
+            elif self.error:
+                error_payload["message"] = self.error
+            elif self.need_confirm:
+                error_payload["message"] = "Confirmation required"
+
+            if not self.need_confirm and isinstance(self.data, dict) and self.data:
+                error_payload["details"] = self.data
+
+            if self.stdout:
+                error_payload["stdout"] = self.stdout
+
+            if self.stderr:
+                error_payload["stderr"] = self.stderr
+
+            error_payload_raw = error_payload
+            envelope["error"] = error_payload
+
+        # Legacy compatibility fields alongside the canonical envelope
+        result_section = envelope.get("result")
+        if isinstance(result_section, dict):
+            envelope.setdefault("summary", result_section.get("summary"))
+
+            need_confirm_block = result_section.get("need_confirm")
+            if isinstance(need_confirm_block, dict):
+                envelope["need_confirm"] = need_confirm_block.get("required", True)
+                if need_confirm_block.get("details") and "data" not in envelope:
+                    envelope["data"] = need_confirm_block["details"]
+                if need_confirm_block.get("message") and "error" not in envelope:
+                    envelope["error"] = need_confirm_block["message"]
+            elif need_confirm_block is not None:
+                envelope["need_confirm"] = bool(need_confirm_block)
+
+            if result_section.get("data") is not None:
+                envelope.setdefault("data", result_section["data"])
+
+            if result_section.get("stdout"):
+                envelope.setdefault("stdout", result_section["stdout"])
+
+            if result_section.get("stderr"):
+                envelope.setdefault("stderr", result_section["stderr"])
+
+        if error_payload_raw:
+            legacy_error = error_payload_raw.get("message") or error_payload_raw.get("summary")
+            envelope["error_detail"] = error_payload_raw
+            envelope["error"] = legacy_error
+            if error_payload_raw.get("details") and "data" not in envelope:
+                envelope["data"] = error_payload_raw["details"]
+            if error_payload_raw.get("stdout"):
+                envelope.setdefault("stdout", error_payload_raw["stdout"])
+            if error_payload_raw.get("stderr"):
+                envelope.setdefault("stderr", error_payload_raw["stderr"])
+            envelope.setdefault("summary", error_payload_raw.get("summary"))
+
+        return envelope
 
     @classmethod
     def create_error(

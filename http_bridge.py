@@ -34,6 +34,14 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field, validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
+try:
+    from src.burly_mcp.runtime_metadata import get_response_metadata
+except ImportError:
+    import sys
+
+    sys.path.insert(0, "src")
+    from burly_mcp.runtime_metadata import get_response_metadata
+
 # Rate limiting imports - conditional based on availability
 try:
     from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -111,29 +119,247 @@ class MCPRequest(BaseModel):
         return v
 
 
-class MCPResponse(BaseModel):
-    """
-    Standardized MCP response envelope.
-    
-    This model ensures consistent response format across all operations,
-    including required fields for metrics and error handling.
-    """
-    ok: bool = Field(..., description="Operation success status")
-    summary: str = Field(..., description="Brief operation summary")
-    need_confirm: Optional[bool] = Field(None, description="Whether confirmation is required")
-    data: Optional[Dict[str, Any]] = Field(None, description="Structured response data")
-    stdout: Optional[str] = Field(None, description="Command standard output")
-    stderr: Optional[str] = Field(None, description="Command standard error")
-    error: Optional[str] = Field(None, description="Error message for failed operations")
-    metrics: Dict[str, Any] = Field(default_factory=dict, description="Execution metrics")
+class Metadata(BaseModel):
+    """Metadata block included with every response envelope."""
 
-    def __init__(self, **data):
-        super().__init__(**data)
-        # Ensure metrics always includes required fields
-        if 'elapsed_ms' not in self.metrics:
-            self.metrics['elapsed_ms'] = 0
-        if 'exit_code' not in self.metrics:
-            self.metrics['exit_code'] = 0 if self.ok else 1
+    api_version: str
+    container_version: str
+    git_sha: str
+
+    class Config:
+        extra = "ignore"
+
+
+class ConfirmationBlock(BaseModel):
+    """Structured confirmation requirement information."""
+
+    required: bool = True
+    message: Optional[str] = None
+    code: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
+
+    class Config:
+        extra = "allow"
+
+
+class ResultPayload(BaseModel):
+    """Result payload for successful operations or confirmation prompts."""
+
+    summary: str
+    data: Optional[Dict[str, Any]] = None
+    stdout: Optional[str] = None
+    stderr: Optional[str] = None
+    need_confirm: Optional[ConfirmationBlock] = None
+
+    class Config:
+        extra = "allow"
+
+    @validator("need_confirm", pre=True)
+    def normalize_need_confirm(cls, value):  # type: ignore[override]
+        """Normalize confirmation block input into structured form."""
+
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return {"required": value}
+        if isinstance(value, dict):
+            normalized = dict(value)
+            normalized.setdefault("required", True)
+            return normalized
+        return value
+
+
+class ErrorPayload(BaseModel):
+    """Error payload for failed operations."""
+
+    summary: str
+    message: Optional[str] = None
+    code: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
+    stdout: Optional[str] = None
+    stderr: Optional[str] = None
+
+    class Config:
+        extra = "allow"
+
+
+class MCPResponse(BaseModel):
+    """Standardized MCP response envelope used across the HTTP bridge."""
+
+    ok: bool
+    result: Optional[ResultPayload] = None
+    error: Optional[ErrorPayload] = None
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    meta: Metadata = Field(default_factory=get_response_metadata)
+
+    class Config:
+        extra = "allow"
+
+    @validator("metrics", pre=True, always=True)
+    def ensure_metrics(cls, value, values):  # type: ignore[override]
+        metrics = dict(value or {})
+        ok = values.get("ok")
+        metrics.setdefault("elapsed_ms", 0)
+        metrics.setdefault("exit_code", 0 if ok else 1)
+        return metrics
+
+    @validator("meta", pre=True, always=True)
+    def ensure_metadata(cls, value):  # type: ignore[override]
+        return value or get_response_metadata()
+
+
+def _build_envelope(
+    ok: bool,
+    *,
+    result: Optional[Dict[str, Any]] = None,
+    error: Optional[Dict[str, Any]] = None,
+    metrics: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Create a normalized response envelope."""
+
+    response = MCPResponse(
+        ok=ok,
+        result=result,
+        error=error,
+        metrics=metrics or {},
+        meta=get_response_metadata(),
+    )
+    envelope = response.dict(exclude_none=True)
+    return _augment_with_legacy_fields(envelope)
+
+
+def _augment_with_legacy_fields(envelope: Dict[str, Any]) -> Dict[str, Any]:
+    """Populate backward-compatibility fields on the response envelope."""
+
+    result_section = envelope.get("result")
+    if isinstance(result_section, dict):
+        envelope.setdefault("summary", result_section.get("summary"))
+
+        need_confirm_block = result_section.get("need_confirm")
+        if isinstance(need_confirm_block, dict):
+            envelope["need_confirm"] = need_confirm_block.get("required", True)
+            if need_confirm_block.get("details") is not None and "data" not in envelope:
+                envelope["data"] = need_confirm_block["details"]
+            if need_confirm_block.get("message") and "error" not in envelope:
+                envelope["error"] = need_confirm_block["message"]
+        elif need_confirm_block is not None:
+            envelope["need_confirm"] = bool(need_confirm_block)
+
+        if result_section.get("data") is not None:
+            envelope.setdefault("data", result_section["data"])
+
+        if result_section.get("stdout"):
+            envelope.setdefault("stdout", result_section["stdout"])
+
+        if result_section.get("stderr"):
+            envelope.setdefault("stderr", result_section["stderr"])
+
+    error_section = envelope.pop("error", None)
+    if isinstance(error_section, dict):
+        envelope["error_detail"] = error_section
+        legacy_error = error_section.get("message") or error_section.get("summary")
+        if legacy_error:
+            envelope["error"] = legacy_error
+        if error_section.get("details") is not None and "data" not in envelope:
+            envelope["data"] = error_section["details"]
+        if error_section.get("stdout"):
+            envelope.setdefault("stdout", error_section["stdout"])
+        if error_section.get("stderr"):
+            envelope.setdefault("stderr", error_section["stderr"])
+        envelope.setdefault("summary", error_section.get("summary"))
+    elif isinstance(error_section, str) and error_section:
+        envelope["error"] = error_section
+
+    return envelope
+
+
+def _legacy_to_envelope(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert legacy response shape into the canonical envelope."""
+
+    ok = bool(payload.get("ok", False))
+    summary = payload.get(
+        "summary",
+        "Operation completed" if ok else "Operation failed",
+    )
+
+    metrics = dict(payload.get("metrics") or {})
+    metrics.setdefault("elapsed_ms", 0)
+    metrics.setdefault("exit_code", 0 if ok else 1)
+
+    result_payload: Optional[Dict[str, Any]] = None
+    error_payload: Optional[Dict[str, Any]] = None
+
+    if ok or payload.get("need_confirm"):
+        result_payload = {"summary": summary}
+
+        if payload.get("need_confirm"):
+            confirmation: Dict[str, Any] = {"required": True}
+            legacy_error = payload.get("error")
+
+            if isinstance(payload.get("data"), dict) and payload["data"]:
+                confirmation["details"] = payload["data"]
+
+            if isinstance(legacy_error, dict):
+                if legacy_error.get("message"):
+                    confirmation["message"] = legacy_error["message"]
+                if legacy_error.get("code"):
+                    confirmation["code"] = legacy_error["code"]
+            elif legacy_error:
+                confirmation["message"] = legacy_error
+
+            result_payload["need_confirm"] = confirmation
+        elif payload.get("data") is not None:
+            result_payload["data"] = payload.get("data")
+
+        if payload.get("stdout"):
+            result_payload["stdout"] = payload.get("stdout")
+
+        if payload.get("stderr"):
+            result_payload["stderr"] = payload.get("stderr")
+
+    if not ok:
+        error_payload = {"summary": summary}
+        legacy_error = payload.get("error")
+
+        if isinstance(legacy_error, dict):
+            error_payload.update(legacy_error)
+        elif legacy_error:
+            error_payload["message"] = legacy_error
+        elif payload.get("need_confirm"):
+            error_payload["message"] = "Confirmation required"
+
+        if not payload.get("need_confirm") and isinstance(payload.get("data"), dict) and payload["data"]:
+            error_payload["details"] = payload["data"]
+
+        if payload.get("stdout"):
+            error_payload["stdout"] = payload.get("stdout")
+
+        if payload.get("stderr"):
+            error_payload["stderr"] = payload.get("stderr")
+
+    return _build_envelope(ok=ok, result=result_payload, error=error_payload, metrics=metrics)
+
+
+def _ensure_envelope(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure the payload matches the canonical response envelope."""
+
+    if "result" in payload or "error" in payload:
+        metrics = dict(payload.get("metrics") or {})
+        ok = bool(payload.get("ok", False))
+        metrics.setdefault("elapsed_ms", 0)
+        metrics.setdefault("exit_code", 0 if ok else 1)
+
+        result = payload.get("result")
+        if isinstance(result, dict):
+            result = dict(result)
+
+        error = payload.get("error_detail")
+        if error is None and isinstance(payload.get("error"), dict):
+            error = dict(payload["error"])
+
+        return _build_envelope(ok=ok, result=result, error=error, metrics=metrics)
+
+    return _legacy_to_envelope(payload)
 
 
 class HealthResponse(BaseModel):
@@ -265,15 +491,16 @@ def _normalize_path(path: str) -> str:
 
 def _build_auth_error_response() -> Dict[str, Any]:
     """Create standardized authentication error envelope."""
-    return {
-        "ok": False,
+    error_payload = {
         "summary": "Authentication required",
-        "error": {
-            "code": "AUTH_REQUIRED",
-            "message": "Missing or invalid API key"
-        },
-        "metrics": {"elapsed_ms": 0, "exit_code": 1}
+        "code": "AUTH_REQUIRED",
+        "message": "Missing or invalid API key",
     }
+    return _build_envelope(
+        ok=False,
+        error=error_payload,
+        metrics={"elapsed_ms": 0, "exit_code": 1},
+    )
 
 
 class APIKeyAuthMiddleware(BaseHTTPMiddleware):
@@ -463,14 +690,17 @@ async def forward_to_mcp_engine(normalized_request: Dict[str, Any]) -> Dict[str,
                 await process.wait()
             except Exception:
                 pass  # Process might already be dead
-            
+
             elapsed_ms = int((time.time() - start_time) * 1000)
-            return {
-                "ok": False,
+            error_payload = {
                 "summary": "MCP engine timeout",
-                "error": "MCP engine did not respond within timeout period (60s)",
-                "metrics": {"elapsed_ms": elapsed_ms, "exit_code": 124}
+                "message": "MCP engine did not respond within timeout period (60s)",
             }
+            return _build_envelope(
+                ok=False,
+                error=error_payload,
+                metrics={"elapsed_ms": elapsed_ms, "exit_code": 124},
+            )
         
         elapsed_ms = int((time.time() - start_time) * 1000)
         
@@ -478,63 +708,76 @@ async def forward_to_mcp_engine(normalized_request: Dict[str, Any]) -> Dict[str,
         if process.returncode != 0:
             error_msg = stderr.decode('utf-8', errors='replace').strip()
             logger.warning(f"MCP engine process failed with exit code {process.returncode}: {error_msg}")
-            return {
-                "ok": False,
+            error_payload = {
                 "summary": "MCP engine process failed",
-                "error": f"Process exited with code {process.returncode}: {error_msg}",
-                "metrics": {"elapsed_ms": elapsed_ms, "exit_code": process.returncode}
+                "message": f"Process exited with code {process.returncode}: {error_msg}",
             }
+            return _build_envelope(
+                ok=False,
+                error=error_payload,
+                metrics={"elapsed_ms": elapsed_ms, "exit_code": process.returncode},
+            )
         
         # Parse response from stdout
         stdout_str = stdout.decode('utf-8', errors='replace').strip()
         if not stdout_str:
             stderr_str = stderr.decode('utf-8', errors='replace').strip()
             logger.error(f"Empty response from MCP engine. stderr: {stderr_str}")
-            return {
-                "ok": False,
+            error_payload = {
                 "summary": "Empty response from MCP engine",
-                "error": "No response received from MCP engine",
-                "data": {"stderr": stderr_str} if stderr_str else None,
-                "metrics": {"elapsed_ms": elapsed_ms, "exit_code": 1}
+                "message": "No response received from MCP engine",
             }
+            if stderr_str:
+                error_payload["details"] = {"stderr": stderr_str}
+            return _build_envelope(
+                ok=False,
+                error=error_payload,
+                metrics={"elapsed_ms": elapsed_ms, "exit_code": 1},
+            )
         
         try:
             # Parse the JSON response from MCP engine
             response = json.loads(stdout_str)
-            
+
             # Ensure response has required metrics for audit/telemetry
             if "metrics" not in response:
                 response["metrics"] = {}
-            
+
             # Always include elapsed_ms and exit_code in metrics
             response["metrics"]["elapsed_ms"] = elapsed_ms
             if "exit_code" not in response["metrics"]:
                 response["metrics"]["exit_code"] = 0 if response.get("ok", False) else 1
-            
+
             # Log successful communication
             logger.debug(f"MCP engine response: ok={response.get('ok')}, elapsed={elapsed_ms}ms")
-            
-            return response
-            
+
+            return _ensure_envelope(response)
+
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON from MCP engine: {e}. Raw output: {stdout_str[:500]}")
-            return {
-                "ok": False,
+            error_payload = {
                 "summary": "Response parsing failed",
-                "error": f"Invalid JSON from MCP engine: {e}",
-                "data": {"raw_output": stdout_str[:1000]},  # First 1KB for debugging
-                "metrics": {"elapsed_ms": elapsed_ms, "exit_code": 1}
+                "message": f"Invalid JSON from MCP engine: {e}",
+                "details": {"raw_output": stdout_str[:1000]},
             }
-        
+            return _build_envelope(
+                ok=False,
+                error=error_payload,
+                metrics={"elapsed_ms": elapsed_ms, "exit_code": 1},
+            )
+
     except Exception as e:
         elapsed_ms = int((time.time() - start_time) * 1000)
         logger.error(f"MCP engine communication failed: {e}", exc_info=True)
-        return {
-            "ok": False,
+        error_payload = {
             "summary": "MCP engine communication failed",
-            "error": f"Failed to communicate with MCP engine: {str(e)}",
-            "metrics": {"elapsed_ms": elapsed_ms, "exit_code": 1}
+            "message": f"Failed to communicate with MCP engine: {str(e)}",
         }
+        return _build_envelope(
+            ok=False,
+            error=error_payload,
+            metrics={"elapsed_ms": elapsed_ms, "exit_code": 1},
+        )
 
 
 def check_docker_availability() -> bool:
@@ -622,9 +865,12 @@ async def test_mcp_engine() -> Dict[str, Any]:
             forward_to_mcp_engine(test_request),
             timeout=10.0  # 10 second timeout for health checks
         )
+        result_section = response.get("result") if isinstance(response, dict) else {}
+        data_section = result_section.get("data") if isinstance(result_section, dict) else None
+        tools = data_section.get("tools", []) if isinstance(data_section, dict) else []
         return {
-            "ok": response.get("ok", False),
-            "tools_count": len(response.get("data", {}).get("tools", [])) if response.get("data") else 0
+            "ok": response.get("ok", False) if isinstance(response, dict) else False,
+            "tools_count": len(tools),
         }
         
     except asyncio.TimeoutError:
@@ -753,17 +999,20 @@ async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded)
     """
     if _normalize_path(request.url.path) in MCP_ENDPOINT_PATHS:
         # For /mcp endpoint, return structured error envelope
-        error_response = {
-            "ok": False,
+        error_payload = {
             "summary": "Rate limit exceeded",
-            "error": f"Too many requests: {exc.detail}",
-            "data": {
+            "message": f"Too many requests: {exc.detail}",
+            "details": {
                 "retry_after": getattr(exc, 'retry_after', None),
-                "suggestion": "Reduce request frequency or set RATE_LIMIT_DISABLED=true for lab environments"
+                "suggestion": "Reduce request frequency or set RATE_LIMIT_DISABLED=true for lab environments",
             },
-            "metrics": {"elapsed_ms": 0, "exit_code": 429}
         }
-        return JSONResponse(status_code=200, content=error_response)
+        envelope = _build_envelope(
+            ok=False,
+            error=error_payload,
+            metrics={"elapsed_ms": 0, "exit_code": 429},
+        )
+        return JSONResponse(status_code=200, content=envelope)
     else:
         # For other endpoints, use standard HTTP 429
         return JSONResponse(
@@ -814,18 +1063,21 @@ async def mcp_endpoint(request: Request, mcp_request: MCPRequest):
         content_length = request.headers.get('content-length')
         if content_length and int(content_length) > MAX_REQUEST_SIZE:
             elapsed_ms = int((time.time() - start_time) * 1000)
+            error_payload = {
+                "summary": "Request too large",
+                "message": f"Request body exceeds maximum size of {MAX_REQUEST_SIZE} bytes",
+                "details": {
+                    "max_size_bytes": MAX_REQUEST_SIZE,
+                    "suggestion": "Reduce request payload size",
+                },
+            }
             return JSONResponse(
                 status_code=200,
-                content={
-                    "ok": False,
-                    "summary": "Request too large",
-                    "error": f"Request body exceeds maximum size of {MAX_REQUEST_SIZE} bytes",
-                    "data": {
-                        "max_size_bytes": MAX_REQUEST_SIZE,
-                        "suggestion": "Reduce request payload size"
-                    },
-                    "metrics": {"elapsed_ms": elapsed_ms, "exit_code": 1}
-                }
+                content=_build_envelope(
+                    ok=False,
+                    error=error_payload,
+                    metrics={"elapsed_ms": elapsed_ms, "exit_code": 1},
+                ),
             )
         
         # Additional sanitization of the request data
@@ -834,17 +1086,20 @@ async def mcp_endpoint(request: Request, mcp_request: MCPRequest):
             sanitize_mcp_request_data(request_dict)
         except ValueError as e:
             elapsed_ms = int((time.time() - start_time) * 1000)
+            error_payload = {
+                "summary": "Invalid request format",
+                "message": f"Request validation failed: {str(e)}",
+                "details": {
+                    "suggestion": "Check request format and reduce complexity",
+                },
+            }
             return JSONResponse(
                 status_code=200,
-                content={
-                    "ok": False,
-                    "summary": "Invalid request format",
-                    "error": f"Request validation failed: {str(e)}",
-                    "data": {
-                        "suggestion": "Check request format and reduce complexity"
-                    },
-                    "metrics": {"elapsed_ms": elapsed_ms, "exit_code": 1}
-                }
+                content=_build_envelope(
+                    ok=False,
+                    error=error_payload,
+                    metrics={"elapsed_ms": elapsed_ms, "exit_code": 1},
+                ),
             )
         
         # Normalize request format
@@ -852,12 +1107,12 @@ async def mcp_endpoint(request: Request, mcp_request: MCPRequest):
         
         # Forward to MCP engine
         mcp_response = await forward_to_mcp_engine(normalized_request)
-        
+
         # Ensure response has required fields and return as JSON
         # Always return HTTP 200 - errors are in the response body
         return JSONResponse(
             status_code=200,
-            content=mcp_response
+            content=_ensure_envelope(mcp_response)
         )
         
     except Exception as e:
@@ -871,11 +1126,9 @@ async def mcp_endpoint(request: Request, mcp_request: MCPRequest):
         elif "timeout" in str(e).lower():
             error_msg = "Request timeout"
         
-        error_response = {
-            "ok": False,
+        error_payload = {
             "summary": "Request processing failed",
-            "error": error_msg,
-            "metrics": {"elapsed_ms": elapsed_ms, "exit_code": 1}
+            "message": error_msg,
         }
         
         # Log full error details for debugging (but don't expose to client)
@@ -883,7 +1136,11 @@ async def mcp_endpoint(request: Request, mcp_request: MCPRequest):
         
         return JSONResponse(
             status_code=200,  # Always HTTP 200
-            content=error_response
+            content=_build_envelope(
+                ok=False,
+                error=error_payload,
+                metrics={"elapsed_ms": elapsed_ms, "exit_code": 1},
+            ),
         )
 
 
@@ -900,13 +1157,18 @@ async def global_exception_handler(request: Request, exc: Exception):
     
     # For /mcp endpoint, always return HTTP 200 with error envelope
     if _normalize_path(request.url.path) in MCP_ENDPOINT_PATHS:
-        error_response = {
-            "ok": False,
+        error_payload = {
             "summary": "Internal server error",
-            "error": "An unexpected error occurred",
-            "metrics": {"elapsed_ms": 0, "exit_code": 1}
+            "message": "An unexpected error occurred",
         }
-        return JSONResponse(status_code=200, content=error_response)
+        return JSONResponse(
+            status_code=200,
+            content=_build_envelope(
+                ok=False,
+                error=error_payload,
+                metrics={"elapsed_ms": 0, "exit_code": 1},
+            ),
+        )
     
     # For other endpoints, use standard HTTP error responses
     return JSONResponse(
@@ -945,17 +1207,22 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 "Method must be one of" in error.get("msg", "")):
                 error_message = error.get("msg", "Invalid method")
         
-        error_response = {
-            "ok": False,
+        error_payload = {
             "summary": "Request validation failed",
-            "error": error_message,
-            "data": {
+            "message": error_message,
+            "details": {
                 "validation_errors": validation_errors,
-                "suggestion": "Check request format and parameter types"
+                "suggestion": "Check request format and parameter types",
             },
-            "metrics": {"elapsed_ms": 0, "exit_code": 1}
         }
-        return JSONResponse(status_code=200, content=error_response)
+        return JSONResponse(
+            status_code=200,
+            content=_build_envelope(
+                ok=False,
+                error=error_payload,
+                metrics={"elapsed_ms": 0, "exit_code": 1},
+            ),
+        )
     
     # For other endpoints, use standard HTTP 422
     return JSONResponse(

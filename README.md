@@ -966,7 +966,7 @@ curl -X POST http://localhost:9400/mcp \
   -d '{"id":"test","method":"list_tools","params":{}}' | jq
 
 # Verify response format
-# Should return: {"ok": true, "data": {"tools": [...]}, ...}
+# Should return: {"ok": true, "result": {"data": {"tools": [...]}, ...}, "metrics": {...}, "meta": {...}}
 
 # Test tool execution
 curl -X POST http://localhost:9400/mcp \
