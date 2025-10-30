@@ -62,6 +62,18 @@ Burly MCP uses environment variables and YAML policy files for configuration. Th
 
 ## Policy Configuration (`policy/tools.yaml`)
 
+BurlyMCP now supports combining the legacy single policy file with a directory
+of "tool packs". At startup the server:
+
+* Loads the file pointed to by `POLICY_FILE` (default: `/config/policy/tools.yaml`).
+* Loads every `*.yaml` under the directory pointed to by `POLICY_DIR`
+  (default: `/config/tools.d`).
+* Merges tool definitions by name with **last file wins** precedence. Disabled
+  tools (`enabled: false`) are skipped but still reported in startup logs.
+
+The example configs under `examples/config/` can be mounted directly into the
+container (for example, `baseline.yaml` → `/config/tools.d/baseline.yaml`).
+
 ### File Structure
 
 The policy file defines available tools and their security constraints:

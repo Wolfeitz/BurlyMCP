@@ -59,6 +59,10 @@ RUN /opt/venv/bin/pip install fastapi uvicorn==0.30.6 slowapi
 RUN test -f /app/BurlyMCP/config/policy/tools.yaml || \
     (echo "ERROR: Default policy file not found at /app/BurlyMCP/config/policy/tools.yaml" && exit 1)
 
+# Provide container-level defaults under /config to support bind mounts
+RUN mkdir -p /config/policy && \
+    cp /app/BurlyMCP/config/policy/tools.yaml /config/policy/tools.yaml
+
 # Create all required directories with proper permissions
 # These MUST be created at build time so startup doesn't die on missing dirs
 RUN mkdir -p \
@@ -78,7 +82,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     PATH="/opt/venv/bin:$PATH" \
-    POLICY_FILE=/app/BurlyMCP/config/policy/tools.yaml \
+    POLICY_FILE=/config/policy/tools.yaml \
     AUDIT_LOG_PATH=/var/log/agentops/audit.jsonl \
     LOG_DIR=/var/log/agentops \
     BLOG_STAGE_ROOT=/app/data/blog/stage \
@@ -105,7 +109,7 @@ RUN echo "=== Security Configuration Validation ===" && \
     ls -la /app && \
     ls -la /var/log/agentops && \
     echo "Checking policy file accessibility..." && \
-    test -r /app/BurlyMCP/config/policy/tools.yaml && \
+    test -r /config/policy/tools.yaml && \
     echo "Security validation passed"
 
 # Switch to non-root user for security

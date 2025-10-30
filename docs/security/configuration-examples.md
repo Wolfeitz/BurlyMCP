@@ -70,7 +70,7 @@ BLOG_MAX_FILE_SIZE=10485760  # 10MB
 
 # Configuration paths
 CONFIG_DIR=/app/config
-POLICY_FILE=/app/config/policy/tools.yaml
+POLICY_FILE=/config/policy/tools.yaml
 # WARNING: Configuration files should be read-only in production
 
 # Log paths

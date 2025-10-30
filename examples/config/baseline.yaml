@@ -1,0 +1,19 @@
+# Safe, read-only toolpack (can be mounted as /config/tools.d/baseline.yaml)
+tools:
+  - name: disk_space
+    description: Show disk usage (df -h)
+    type: shell_command
+    enabled: true
+    mutating: false
+    mutates: false
+    requires_confirm: false
+    timeout_sec: 30
+    args_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: Optional absolute path to inspect
+    # Args are passed as environment variables (PATH uppercased below is from "path" arg)
+    command: ["bash", "-lc", "df -h ${PATH:-/}"]

@@ -91,7 +91,7 @@ class ContainerSecurityValidator:
                     )
             
             # Check policy file accessibility
-            policy_file = Path(os.environ.get("POLICY_FILE", "/app/BurlyMCP/config/policy/tools.yaml"))
+            policy_file = Path(os.environ.get("POLICY_FILE", "/config/policy/tools.yaml"))
             if not policy_file.exists():
                 self.errors.append(f"Policy file not found: {policy_file}")
                 return False

@@ -1,0 +1,21 @@
+# Mutating example (operator must opt-in; confirm-gated)
+tools:
+  - name: blog_publish_static
+    description: Publish a prepared markdown file to the static site
+    type: shell_command
+    enabled: false
+    mutating: true
+    mutates: true
+    requires_confirm: true
+    timeout_sec: 120
+    args_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        file:
+          type: string
+          description: "Absolute path to a prepared .md"
+        _confirm:
+          type: boolean
+      required: ["file"]
+    command: ["bash", "-lc", "python3 /app/scripts/publish.py --file \"${FILE}\""]

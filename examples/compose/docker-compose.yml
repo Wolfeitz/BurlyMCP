@@ -36,9 +36,15 @@ services:
     
     # Environment variables with secure defaults
     environment:
+      - BURLYMCP_API_KEY=${BURLYMCP_API_KEY:-change-me}
+      - GIT_SHA=${GIT_SHA:-dev}
       # Optional: Configure blog directories
       - BLOG_STAGE_ROOT=/app/data/blog/stage
       - BLOG_PUBLISH_ROOT=/app/data/blog/publish
+
+      # Optional: Explicit policy source overrides (defaults already work)
+      # - POLICY_FILE=/config/policy/tools.yaml
+      # - POLICY_DIR=/config/tools.d
       
       # Optional: Enable notifications
       # - GOTIFY_URL=https://your-gotify-server.com
@@ -59,10 +65,15 @@ services:
     volumes:
       # Optional: Persist audit logs
       - ./logs:/var/log/agentops:rw
-      
+
       # Optional: Blog content directories
       - ./blog/stage:/app/data/blog/stage:ro
       - ./blog/publish:/app/data/blog/publish:rw
+
+      # Directory-based tool configuration examples
+      - ../config/baseline.yaml:/config/tools.d/baseline.yaml:ro
+      # Enable mutating blog publish tool by uncommenting the line below
+      # - ../config/blog-publish.yaml:/config/tools.d/020-blog-publish.yaml:ro
     
     # OPTIONAL: to allow container to inspect host Docker,
     # replace <host_docker_group_gid> with the numeric GID of your docker group:
