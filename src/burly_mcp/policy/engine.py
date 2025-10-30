@@ -115,11 +115,21 @@ class PolicyLoader:
                     normalized_root = os.sep
                 return path.startswith(normalized_root.rstrip(os.sep) + os.sep) or path == normalized_root
 
-            if not any(
+            allowed = any(
                 _is_within_root(canonical_path, root)
                 for root in allowed_roots
                 if root
-            ):
+            )
+
+            default_policy_path = os.path.realpath(DEFAULT_POLICY_FILE)
+            if canonical_path == default_policy_path:
+                allowed = True
+            elif env_policy_file:
+                env_policy_path = os.path.realpath(env_policy_file)
+                if canonical_path == env_policy_path:
+                    allowed = True
+
+            if not allowed:
                 raise PolicyLoadError(
                     "Policy file path not allowed - potential path traversal"
                 )
