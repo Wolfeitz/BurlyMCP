@@ -252,8 +252,8 @@ print('GOTIFY_URL set:', bool(os.getenv('GOTIFY_URL')))
 1. **Validate policy file:**
 ```bash
 # Check policy file exists and is readable
-docker-compose run --rm burly-mcp ls -la /app/config/policy/tools.yaml
-docker-compose run --rm burly-mcp cat /app/config/policy/tools.yaml
+docker-compose run --rm burly-mcp ls -la /config/policy/tools.yaml
+docker-compose run --rm burly-mcp cat /config/policy/tools.yaml
 ```
 
 2. **Test YAML syntax:**
@@ -261,7 +261,7 @@ docker-compose run --rm burly-mcp cat /app/config/policy/tools.yaml
 # Validate YAML syntax
 docker-compose run --rm burly-mcp python -c "
 import yaml
-with open('/app/config/policy/tools.yaml', 'r') as f:
+with open('/config/policy/tools.yaml', 'r') as f:
     try:
         policy = yaml.safe_load(f)
         print('YAML syntax valid')
@@ -301,7 +301,7 @@ docker-compose run --rm burly-mcp python -c "
 import jsonschema
 import yaml
 
-with open('/app/config/policy/tools.yaml', 'r') as f:
+with open('/config/policy/tools.yaml', 'r') as f:
     policy = yaml.safe_load(f)
 
 for tool_name, tool_config in policy['tools'].items():

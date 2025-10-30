@@ -88,7 +88,7 @@ class TestLoadConfiguration:
         with patch.dict(os.environ, {}, clear=True):
             config = load_configuration()
 
-            assert config["policy_file"] == "/app/BurlyMCP/config/policy/tools.yaml"
+            assert config["policy_file"] == "/config/policy/tools.yaml"
             assert config["blog_stage_root"] == "/app/data/blog/stage"
             assert config["blog_publish_root"] == "/app/data/blog/publish"
             assert config["default_timeout"] == 300

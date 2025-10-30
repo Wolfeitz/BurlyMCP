@@ -72,6 +72,26 @@ The container starts successfully without any external dependencies, configurati
 > and include `-H "X-Api-Key: $BURLYMCP_API_KEY"` when the container is
 > configured with an API key. Remove the header if authentication is disabled.
 
+## Quickstart (no mcpo)
+
+```bash
+docker compose -f examples/compose/docker-compose.yaml up -d
+
+# List tools
+curl -sS -H 'X-Api-Key: change-me' -H 'Content-Type: application/json' \
+  -d '{"id":"1","method":"list_tools","params":{}}' \
+  http://localhost:19400/v1/mcp | jq
+
+# Call a tool
+curl -sS -H 'X-Api-Key: change-me' -H 'Content-Type: application/json' \
+  -d '{"id":"2","method":"call_tool","name":"disk_space","args":{"path":"/"}}' \
+  http://localhost:19400/v1/mcp | jq
+```
+
+* Directory-based config examples: see `examples/config/`.
+* Compose that mounts the examples: see `examples/compose/docker-compose.yaml`.
+* REST Client / curl examples: see `examples/requests/`.
+
 ### Deployment Options
 
 **Minimal Mode (Recommended for testing):**
@@ -113,7 +133,7 @@ docker run -d --name burlymcp \
 **Core Configuration:**
 - `LOG_LEVEL` - Logging verbosity (DEBUG, INFO, WARNING, ERROR) [default: INFO]
 - `AUDIT_LOG_PATH` - Audit log file location [default: /var/log/agentops/audit.jsonl]
-- `POLICY_FILE` - Policy configuration file [default: /app/BurlyMCP/config/policy/tools.yaml]
+- `POLICY_FILE` - Policy configuration file [default: /config/policy/tools.yaml]
 
 **Blog Management:**
 - `BLOG_STAGE_ROOT` - Staging directory for blog content [default: /app/data/blog/stage]
@@ -280,7 +300,7 @@ Burly MCP implements defense-in-depth security:
 The container includes these default paths that work without external mounts:
 
 **Configuration Files:**
-- `/app/BurlyMCP/config/policy/tools.yaml` - Default policy file (embedded in image)
+- `/config/policy/tools.yaml` - Default policy file (embedded in image)
 - `/app/BurlyMCP/` - Complete BurlyMCP source tree
 
 **Data Directories:**
@@ -303,7 +323,7 @@ All default paths and settings can be overridden via environment variables:
 # Logging and Audit
 LOG_LEVEL=INFO                                    # DEBUG, INFO, WARNING, ERROR
 AUDIT_LOG_PATH=/var/log/agentops/audit.jsonl     # Audit log file location
-POLICY_FILE=/app/BurlyMCP/config/policy/tools.yaml # Policy configuration file
+POLICY_FILE=/config/policy/tools.yaml # Policy configuration file
 
 # Server Settings
 PORT=9400                                         # HTTP server port
@@ -365,7 +385,7 @@ MAX_REQUEST_SIZE=10240                           # Maximum request body size (10
 
 **Custom Policy File:**
 ```bash
--v ./custom-policy.yaml:/app/BurlyMCP/config/policy/tools.yaml:ro
+-v ./custom-policy.yaml:/config/policy/tools.yaml:ro
 ```
 - Override default policy with custom tool configurations
 - File must be readable by UID 1000
@@ -483,12 +503,12 @@ docker run -d --name burlymcp-secure \
 
 The container includes a default policy file that can be customized:
 
-**Default Policy Location:** `/app/BurlyMCP/config/policy/tools.yaml`
+**Default Policy Location:** `/config/policy/tools.yaml`
 
 **Custom Policy Override:**
 ```bash
 # Mount custom policy file
--v ./my-policy.yaml:/app/BurlyMCP/config/policy/tools.yaml:ro
+-v ./my-policy.yaml:/config/policy/tools.yaml:ro
 ```
 
 **Example Custom Policy:**
@@ -751,7 +771,7 @@ sudo chown -R 1000:1000 <your-mount-directory>
 # 3. Invalid policy file
 docker run --rm ghcr.io/wolfeitz/burlymcp:main python -c "
 import yaml
-with open('/app/BurlyMCP/config/policy/tools.yaml') as f:
+with open('/config/policy/tools.yaml') as f:
     print('Policy valid:', yaml.safe_load(f))
 "
 ```
@@ -900,7 +920,7 @@ tools:
 EOF
 
 docker run --rm -p 9400:9400 \
-  -v ./minimal-policy.yaml:/app/BurlyMCP/config/policy/tools.yaml:ro \
+  -v ./minimal-policy.yaml:/config/policy/tools.yaml:ro \
   ghcr.io/wolfeitz/burlymcp:main
 ```
 

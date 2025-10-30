@@ -469,7 +469,7 @@ class FeatureDetector:
             return self._cache[feature_name]
         
         try:
-            policy_file = os.environ.get("POLICY_FILE", "/app/BurlyMCP/config/policy/tools.yaml")
+            policy_file = os.environ.get("POLICY_FILE", "/config/policy/tools.yaml")
             policy_path = Path(policy_file)
             
             details = {"policy_file": policy_file}

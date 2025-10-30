@@ -301,7 +301,7 @@ class TestConfig:
 
         # Test default paths (container-internal defaults)
         assert config.config_dir == Path("/app/BurlyMCP/config")
-        assert config.policy_file == Path("/app/BurlyMCP/config/policy/tools.yaml")
+        assert config.policy_file == Path("/config/policy/tools.yaml")
 
     def test_config_custom_config_dir(self, tmp_path):
         """Test configuration with custom config directory."""
@@ -312,7 +312,9 @@ class TestConfig:
 
         assert config.config_dir == custom_dir
         # Policy file should still use environment variable if set, not custom dir default
-        assert config.policy_file == Path(os.environ.get("POLICY_FILE", "/app/BurlyMCP/config/policy/tools.yaml"))
+        assert config.policy_file == Path(
+            os.environ.get("POLICY_FILE", "/config/policy/tools.yaml")
+        )
 
     @patch.dict(os.environ, {"GOTIFY_URL": "  ", "BLOG_URL": ""})
     def test_config_empty_environment_variable(self):

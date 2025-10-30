@@ -50,6 +50,19 @@ jobs:
             fi
           done
 
+      - name: Enforce docs updated when policy/config changes
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          set -e
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          needs_docs_guard=0
+          echo "$CHANGED" | grep -E '^(config/policy/|examples/config/).*\.ya?ml$' && needs_docs_guard=1 || true
+          if [ "$needs_docs_guard" = "1" ]; then
+            echo "$CHANGED" | grep -E '^docs/|README\.md$' && exit 0
+            echo "::error::Policy/config changed but no docs were updated. Update docs or add the 'docs-ok' label."
+            exit 1
+          fi
+
   validate-specific-configs:
     name: Validate Specific Configurations
     runs-on: ubuntu-latest

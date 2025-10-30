@@ -1,0 +1,13 @@
+### List tools
+POST http://localhost:19400/v1/mcp
+X-Api-Key: change-me
+Content-Type: application/json
+
+{"id":"1","method":"list_tools","params":{}}
+
+### Call disk_space
+POST http://localhost:19400/v1/mcp
+X-Api-Key: change-me
+Content-Type: application/json
+
+{"id":"2","method":"call_tool","name":"disk_space","args":{"path":"/"}}

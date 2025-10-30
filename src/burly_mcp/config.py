@@ -22,10 +22,9 @@ class Config:
             self.config_dir = Path("/app/BurlyMCP/config")
         
         # Policy file with container-internal default
-        self.policy_file = Path(os.environ.get(
-            "POLICY_FILE", 
-            "/app/BurlyMCP/config/policy/tools.yaml"
-        ))
+        self.policy_file = Path(
+            os.environ.get("POLICY_FILE", "/config/policy/tools.yaml")
+        )
 
         # Default configuration values with container-internal paths
         self._defaults = {

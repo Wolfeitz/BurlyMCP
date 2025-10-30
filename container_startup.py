@@ -97,7 +97,7 @@ def log_startup_summary():
         config = {
             "server_name": os.environ.get("SERVER_NAME", "burlymcp"),
             "server_version": os.environ.get("SERVER_VERSION", "1.0.0"),
-            "policy_file": os.environ.get("POLICY_FILE", "/app/BurlyMCP/config/policy/tools.yaml"),
+            "policy_file": os.environ.get("POLICY_FILE", "/config/policy/tools.yaml"),
             "audit_enabled": os.environ.get("AUDIT_ENABLED", "true").lower() in ["true", "1", "yes"],
             "notifications_enabled": bool(os.environ.get("GOTIFY_URL") and os.environ.get("GOTIFY_TOKEN")),
             "docker_socket": os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock"),
