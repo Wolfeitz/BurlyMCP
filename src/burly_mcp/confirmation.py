@@ -18,6 +18,8 @@ operations while providing clear guidance on how to proceed.
 import logging
 from typing import Any, Dict
 
+from .runtime_metadata import get_response_metadata
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,27 +66,54 @@ def require_confirmation_response(tool_name: str, operation_description: str = N
     if operation_description is None:
         operation_description = f"execute {tool_name}"
     
+    summary = f"Confirmation required for {tool_name}"
+    message = "This is a mutating operation and requires _confirm: true"
+
+    confirmation_details = {
+        "tool": tool_name,
+        "operation": operation_description,
+        "required_arg": "_confirm",
+        "required_value": True,
+        "suggestion": f"Add '_confirm': true to {tool_name} arguments to proceed",
+        "example": {
+            "method": "call_tool",
+            "name": tool_name,
+            "args": {
+                "_confirm": True,
+                "...": "other arguments",
+            },
+        },
+    }
+
+    metrics = {"elapsed_ms": 0, "exit_code": 1}
+
+    confirmation_block = {
+        "required": True,
+        "message": message,
+        "code": "CONFIRM_REQUIRED",
+        "details": confirmation_details,
+    }
+
+    error_payload = {
+        "summary": summary,
+        "message": message,
+        "code": "CONFIRM_REQUIRED",
+        "details": confirmation_details,
+    }
+
     return {
         "ok": False,
-        "need_confirm": True,
-        "summary": f"Confirmation required for {tool_name}",
-        "error": "This is a mutating operation and requires _confirm: true",
-        "data": {
-            "tool": tool_name,
-            "operation": operation_description,
-            "required_arg": "_confirm",
-            "required_value": True,
-            "suggestion": f"Add '_confirm': true to {tool_name} arguments to proceed",
-            "example": {
-                "method": "call_tool",
-                "name": tool_name,
-                "args": {
-                    "_confirm": True,
-                    "...": "other arguments"
-                }
-            }
+        "result": {
+            "summary": summary,
+            "need_confirm": confirmation_block,
         },
-        "metrics": {"elapsed_ms": 0, "exit_code": 1}
+        "error_detail": error_payload,
+        "error": message,
+        "metrics": metrics,
+        "meta": get_response_metadata(),
+        "summary": summary,
+        "need_confirm": True,
+        "data": confirmation_details,
     }
 
 
@@ -204,15 +233,27 @@ def enhance_tool_with_confirmation(tool_func):
         if confirmation_response is not None:
             # Convert to ToolResult format
             from .registry import ToolResult
+            result_section = confirmation_response.get("result", {})
+            need_confirm_block = result_section.get("need_confirm", {}) if isinstance(result_section, dict) else {}
+            error_section = confirmation_response.get("error", {})
+            metrics = confirmation_response.get("metrics", {})
+
+            details = need_confirm_block.get("details") if isinstance(need_confirm_block, dict) else None
+            message = ""
+            if isinstance(need_confirm_block, dict):
+                message = need_confirm_block.get("message", "")
+            if not message and isinstance(error_section, dict):
+                message = error_section.get("message", "")
+
             return ToolResult(
                 success=False,
                 need_confirm=True,
-                summary=confirmation_response["summary"],
-                data=confirmation_response["data"],
+                summary=result_section.get("summary", f"Confirmation required for {tool_name}"),
+                data=details if isinstance(details, dict) else None,
                 stdout="",
-                stderr=confirmation_response["error"],
-                exit_code=confirmation_response["metrics"]["exit_code"],
-                elapsed_ms=confirmation_response["metrics"]["elapsed_ms"],
+                stderr=message,
+                exit_code=metrics.get("exit_code", 1),
+                elapsed_ms=metrics.get("elapsed_ms", 0),
             )
         
         # Log successful confirmation

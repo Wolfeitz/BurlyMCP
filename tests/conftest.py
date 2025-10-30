@@ -610,26 +610,33 @@ def mock_mcp_engine_response():
     """Provide mock MCP engine response for testing."""
     return {
         "ok": True,
-        "summary": "Operation completed successfully",
-        "data": {
-            "tools": [
-                {
-                    "name": "disk_space",
-                    "description": "Check disk space usage",
-                    "args_schema": {
-                        "type": "object",
-                        "properties": {
-                            "path": {"type": "string", "description": "Path to check"}
+        "result": {
+            "summary": "Operation completed successfully",
+            "data": {
+                "tools": [
+                    {
+                        "name": "disk_space",
+                        "description": "Check disk space usage",
+                        "args_schema": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string", "description": "Path to check"}
+                            },
+                            "required": ["path"],
                         },
-                        "required": ["path"]
                     }
-                }
-            ]
+                ]
+            },
         },
         "metrics": {
             "elapsed_ms": 150,
             "exit_code": 0
-        }
+        },
+        "meta": {
+            "api_version": "v1",
+            "container_version": "test",
+            "git_sha": "test-sha",
+        },
     }
 
 
@@ -638,12 +645,20 @@ def mock_mcp_engine_error_response():
     """Provide mock MCP engine error response for testing."""
     return {
         "ok": False,
-        "summary": "Tool execution failed",
+        "error_detail": {
+            "summary": "Tool execution failed",
+            "message": "Tool 'nonexistent_tool' not found",
+        },
         "error": "Tool 'nonexistent_tool' not found",
         "metrics": {
             "elapsed_ms": 50,
             "exit_code": 1
-        }
+        },
+        "meta": {
+            "api_version": "v1",
+            "container_version": "test",
+            "git_sha": "test-sha",
+        },
     }
 
 

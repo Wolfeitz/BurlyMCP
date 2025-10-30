@@ -120,38 +120,69 @@ Processes MCP protocol requests via HTTP. Supports multiple request formats and 
 
 **Response Envelope:**
 
-All responses follow this standardized envelope format:
+All responses include a canonical envelope with runtime metadata. The
+`result` block is present when the request succeeds (or requires
+confirmation), and `error_detail` appears when the request fails.
 
 ```json
 {
   "ok": boolean,
+  "result": {
+    "summary": "string",
+    "data": object,
+    "stdout": "string",
+    "stderr": "string",
+    "need_confirm": {
+      "required": boolean,
+      "message": "string",
+      "code": "string",
+      "details": object
+    }
+  },
+  "error_detail": {
+    "summary": "string",
+    "message": "string",
+    "code": "string",
+    "details": object,
+    "stdout": "string",
+    "stderr": "string"
+  },
+  "error": "string",
+  "metrics": {
+    "elapsed_ms": number,
+    "exit_code": number
+  },
+  "meta": {
+    "api_version": "string",
+    "container_version": "string",
+    "git_sha": "string"
+  },
   "summary": "string",
   "need_confirm": boolean,
   "data": object,
   "stdout": "string",
-  "stderr": "string",
-  "error": "string | {\"code\": string, \"message\": string}",
-  "metrics": {
-    "elapsed_ms": number,
-    "exit_code": number
-  }
+  "stderr": "string"
 }
 ```
 
+The legacy fields (`summary`, `need_confirm`, `data`, `stdout`, `stderr`, and
+the string `error`) remain for backward compatibility, mirroring the contents
+of the canonical blocks.
+
 **Required Fields:**
 - `ok`: Operation success status (boolean)
-- `summary`: Brief operation summary (string)
 - `metrics.elapsed_ms`: Execution time in milliseconds (number)
 - `metrics.exit_code`: Process exit code (number, 0 for success)
+- `meta`: Version metadata identifying the API contract and build
 
 **Optional Fields:**
-- `need_confirm`: Whether confirmation is required (boolean)
-- `data`: Structured response data (object)
-- `stdout`: Command standard output (string)
-- `stderr`: Command standard error (string)
-- `error`: Error information for failed operations. Most responses return a
-  string message; authentication failures return an object with `code` and
-  `message` fields for machine-readable handling.
+- `result`: Present when the operation completes successfully or requires
+  confirmation.
+- `result.need_confirm`: Provides confirmation requirements when the
+  operation cannot proceed without user approval. Guidance is located in the
+  nested `details` structure.
+- `error_detail`: Present when the operation fails. The string `error`
+  contains the human-readable message for compatibility.
 
 ## API Examples
 
@@ -173,32 +204,46 @@ curl -X POST http://localhost:9400/mcp \
 ```json
 {
   "ok": true,
-  "summary": "Available tools: 5 tools found",
-  "data": {
-    "tools": [
-      {
-        "name": "disk_space",
-        "description": "Check filesystem disk space usage",
-        "inputSchema": {
-          "type": "object",
-          "properties": {},
-          "additionalProperties": false
+  "result": {
+    "summary": "Available tools: 5 tools found",
+    "data": {
+      "tools": [
+        {
+          "name": "disk_space",
+          "description": "Check filesystem disk space usage",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "docker_ps",
+          "description": "List Docker containers with status information",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
         }
-      },
-      {
-        "name": "docker_ps",
-        "description": "List Docker containers with status information",
-        "inputSchema": {
-          "type": "object",
-          "properties": {},
-          "additionalProperties": false
-        }
-      }
-    ]
+      ]
+    }
   },
   "metrics": {
     "elapsed_ms": 45,
     "exit_code": 0
+  },
+  "meta": {
+    "api_version": "v1",
+    "container_version": "1.0.0",
+    "git_sha": "abc1234"
+  },
+  "summary": "Available tools: 5 tools found",
+  "data": {
+    "tools": [
+      {"name": "disk_space", "description": "Check filesystem disk space usage"},
+      {"name": "docker_ps", "description": "List Docker containers with status information"}
+    ]
   }
 }
 ```
@@ -222,24 +267,38 @@ curl -X POST http://localhost:9400/mcp \
 ```json
 {
   "ok": true,
-  "summary": "Disk space check completed",
-  "data": {
-    "filesystems": [
-      {
-        "filesystem": "/dev/sda1",
-        "size": "20G",
-        "used": "12G",
-        "available": "7.2G",
-        "use_percent": "63%",
-        "mounted_on": "/"
-      }
-    ]
+  "result": {
+    "summary": "Disk space check completed",
+    "data": {
+      "filesystems": [
+        {
+          "filesystem": "/dev/sda1",
+          "size": "20G",
+          "used": "12G",
+          "available": "7.2G",
+          "use_percent": "63%",
+          "mounted_on": "/"
+        }
+      ]
+    },
+    "stdout": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        20G   12G  7.2G  63% /"
   },
-  "stdout": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        20G   12G  7.2G  63% /",
   "metrics": {
     "elapsed_ms": 123,
     "exit_code": 0
-  }
+  },
+  "meta": {
+    "api_version": "v1",
+    "container_version": "1.0.0",
+    "git_sha": "abc1234"
+  },
+  "summary": "Disk space check completed",
+  "data": {
+    "filesystems": [
+      {"filesystem": "/dev/sda1", "size": "20G", "used": "12G", "available": "7.2G"}
+    ]
+  },
+  "stdout": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        20G   12G  7.2G  63% /"
 }
 ```
 
@@ -281,17 +340,38 @@ curl -X POST http://localhost:9400/mcp \
 ```json
 {
   "ok": false,
+  "result": {
+    "summary": "blog_publish_static requires confirmation",
+    "need_confirm": {
+      "required": true,
+      "message": "Confirmation required for mutating operation",
+      "details": {
+        "required_arg": "_confirm",
+        "required_value": true,
+        "suggestion": "Add '_confirm': true to blog_publish_static arguments"
+      }
+    }
+  },
+  "error_detail": {
+    "summary": "blog_publish_static requires confirmation",
+    "message": "Confirmation required for mutating operation"
+  },
+  "error": "Confirmation required for mutating operation",
+  "metrics": {
+    "elapsed_ms": 5,
+    "exit_code": 1
+  },
+  "meta": {
+    "api_version": "v1",
+    "container_version": "1.0.0",
+    "git_sha": "abc1234"
+  },
   "need_confirm": true,
   "summary": "blog_publish_static requires confirmation",
-  "error": "Confirmation required for mutating operation",
   "data": {
     "required_arg": "_confirm",
     "required_value": true,
     "suggestion": "Add '_confirm': true to blog_publish_static arguments"
-  },
-  "metrics": {
-    "elapsed_ms": 5,
-    "exit_code": 1
   }
 }
 ```

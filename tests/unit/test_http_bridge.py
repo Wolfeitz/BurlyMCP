@@ -10,6 +10,12 @@ import json
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
 
+
+@pytest.fixture
+def anyio_backend():
+    """Force anyio tests to run with asyncio backend."""
+    return "asyncio"
+
 # Import the FastAPI app and dependencies
 try:
     from fastapi.testclient import TestClient
@@ -116,28 +122,33 @@ class TestHTTPBridgeModels:
         """Test MCPResponse creation with required fields."""
         response_data = {
             "ok": True,
-            "summary": "Operation successful",
-            "data": {"result": "test"},
-            "metrics": {"elapsed_ms": 150, "exit_code": 0}
+            "result": {
+                "summary": "Operation successful",
+                "data": {"result": "test"},
+            },
+            "metrics": {"elapsed_ms": 150, "exit_code": 0},
         }
-        
+
         response = MCPResponse(**response_data)
         assert response.ok is True
-        assert response.summary == "Operation successful"
-        assert response.data == {"result": "test"}
+        assert response.result is not None
+        assert response.result.summary == "Operation successful"
+        assert response.result.data == {"result": "test"}
         assert response.metrics["elapsed_ms"] == 150
         assert response.metrics["exit_code"] == 0
+        assert response.meta.api_version
 
     def test_mcp_response_defaults(self):
         """Test MCPResponse with default values."""
         response_data = {
             "ok": False,
-            "summary": "Operation failed"
+            "error": {"summary": "Operation failed"},
         }
-        
+
         response = MCPResponse(**response_data)
         assert response.ok is False
-        assert response.summary == "Operation failed"
+        assert response.error is not None
+        assert response.error.summary == "Operation failed"
         assert response.metrics["elapsed_ms"] == 0
         assert response.metrics["exit_code"] == 1  # Default for failed operations
 
@@ -397,8 +408,10 @@ class TestHTTPBridgeEndpoints:
         data = response.json()
 
         assert data["ok"] is False
-        assert data["summary"] == "Authentication required"
-        assert data["error"]["code"] == "AUTH_REQUIRED"
+        assert data["error_detail"]["summary"] == "Authentication required"
+        assert data["error_detail"]["code"] == "AUTH_REQUIRED"
+        assert data["error"] == "Missing or invalid API key"
+        assert "meta" in data
 
     def test_health_endpoint_rejects_incorrect_api_key(self, client):
         """Test that /health returns AUTH_REQUIRED when key does not match."""
@@ -410,7 +423,7 @@ class TestHTTPBridgeEndpoints:
         data = response.json()
 
         assert data["ok"] is False
-        assert data["error"]["code"] == "AUTH_REQUIRED"
+        assert data["error_detail"]["code"] == "AUTH_REQUIRED"
 
     def test_health_alias_requires_api_key(self, client):
         """Test that /v1/health alias enforces API key."""
@@ -418,7 +431,7 @@ class TestHTTPBridgeEndpoints:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["error"]["code"] == "AUTH_REQUIRED"
+        assert data["error_detail"]["code"] == "AUTH_REQUIRED"
 
     def test_health_alias_rejects_incorrect_api_key(self, client):
         """Test that /v1/health alias returns AUTH_REQUIRED for wrong key."""
@@ -428,7 +441,7 @@ class TestHTTPBridgeEndpoints:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["error"]["code"] == "AUTH_REQUIRED"
+        assert data["error_detail"]["code"] == "AUTH_REQUIRED"
 
     @patch('http_bridge.forward_to_mcp_engine')
     def test_mcp_endpoint_list_tools(self, mock_forward, client, mock_mcp_engine_response):
@@ -445,12 +458,18 @@ class TestHTTPBridgeEndpoints:
         
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["ok"] is True
-        assert data["summary"] == "Operation completed successfully"
-        assert "tools" in data["data"]
+        assert data["result"]["summary"] == "Operation completed successfully"
+        assert "tools" in data["result"]["data"]
         assert "metrics" in data
         assert data["metrics"]["elapsed_ms"] == 150
+
+        meta = data.get("meta")
+        assert isinstance(meta, dict)
+        assert meta.get("api_version")
+        assert meta.get("container_version")
+        assert meta.get("git_sha")
 
     @patch('http_bridge.forward_to_mcp_engine')
     def test_mcp_endpoint_call_tool_direct_format(self, mock_forward, client, mock_mcp_engine_response):
@@ -468,8 +487,9 @@ class TestHTTPBridgeEndpoints:
         
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["ok"] is True
+        assert data["result"]["summary"] == "Operation completed successfully"
         # Verify the request was normalized correctly
         mock_forward.assert_called_once()
         normalized_request = mock_forward.call_args[0][0]
@@ -495,8 +515,9 @@ class TestHTTPBridgeEndpoints:
         
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["ok"] is True
+        assert data["result"]["summary"] == "Operation completed successfully"
         # Verify the request was normalized correctly
         mock_forward.assert_called_once()
         normalized_request = mock_forward.call_args[0][0]
@@ -521,9 +542,9 @@ class TestHTTPBridgeEndpoints:
         # Should still return HTTP 200 (per requirements)
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["ok"] is False
-        assert data["summary"] == "Tool execution failed"
+        assert data["error_detail"]["summary"] == "Tool execution failed"
         assert "not found" in data["error"]
         assert data["metrics"]["exit_code"] == 1
 
@@ -540,7 +561,9 @@ class TestHTTPBridgeEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["ok"] is False
-        assert "validation" in data["summary"].lower() or "invalid" in data["error"].lower()
+        error_detail = data.get("error_detail", {})
+        error_msg = data.get("error", "")
+        assert "validation" in error_detail.get("summary", "").lower() or "invalid" in error_msg.lower()
 
     def test_mcp_endpoint_invalid_tool_name(self, client):
         """Test /mcp endpoint with invalid tool name."""
@@ -557,7 +580,9 @@ class TestHTTPBridgeEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["ok"] is False
-        assert "validation" in data["summary"].lower() or "invalid" in data["error"].lower()
+        error_detail = data.get("error_detail", {})
+        error_msg = data.get("error", "")
+        assert "validation" in error_detail.get("summary", "").lower() or "invalid" in error_msg.lower()
 
     def test_mcp_endpoint_oversized_request(self, client):
         """Test /mcp endpoint with oversized request."""
@@ -575,7 +600,7 @@ class TestHTTPBridgeEndpoints:
         # Should return HTTP 200 with error in body (per requirements)
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["ok"] is False
         assert "exceeds maximum size" in data["error"].lower()
 
@@ -596,9 +621,9 @@ class TestHTTPBridgeEndpoints:
         # Should still return HTTP 200 (per requirements)
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["ok"] is False
-        assert "processing failed" in data["summary"].lower()
+        assert "processing failed" in data["error_detail"]["summary"].lower()
         assert "metrics" in data
         assert data["metrics"]["exit_code"] == 1
 
@@ -617,7 +642,7 @@ class TestHTTPBridgeEndpoints:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["error"]["code"] == "AUTH_REQUIRED"
+        assert data["error_detail"]["code"] == "AUTH_REQUIRED"
         mock_forward.assert_not_called()
 
     @patch('http_bridge.forward_to_mcp_engine')
@@ -636,7 +661,7 @@ class TestHTTPBridgeEndpoints:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["error"]["code"] == "AUTH_REQUIRED"
+        assert data["error_detail"]["code"] == "AUTH_REQUIRED"
         mock_forward.assert_not_called()
 
     @patch('http_bridge.forward_to_mcp_engine')
@@ -671,7 +696,7 @@ class TestHTTPBridgeEndpoints:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["error"]["code"] == "AUTH_REQUIRED"
+        assert data["error_detail"]["code"] == "AUTH_REQUIRED"
         mock_forward.assert_not_called()
 
     @patch('http_bridge.forward_to_mcp_engine')
@@ -690,7 +715,7 @@ class TestHTTPBridgeEndpoints:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["error"]["code"] == "AUTH_REQUIRED"
+        assert data["error_detail"]["code"] == "AUTH_REQUIRED"
         mock_forward.assert_not_called()
 
 
@@ -700,7 +725,7 @@ class TestHTTPBridgeEndpoints:
 class TestHTTPBridgeMCPEngineIntegration:
     """Test HTTP bridge integration with MCP engine (mocked)."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio(backend="asyncio")
     @patch('http_bridge.asyncio.create_subprocess_exec')
     async def test_forward_to_mcp_engine_success(self, mock_subprocess):
         """Test successful communication with MCP engine."""
@@ -720,13 +745,13 @@ class TestHTTPBridgeMCPEngineIntegration:
         }
         
         response = await forward_to_mcp_engine(request)
-        
+
         assert response["ok"] is True
-        assert response["summary"] == "Success"
+        assert response["result"]["summary"] == "Success"
         assert "metrics" in response
         assert "elapsed_ms" in response["metrics"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio(backend="asyncio")
     @patch('http_bridge.asyncio.create_subprocess_exec')
     async def test_forward_to_mcp_engine_process_failure(self, mock_subprocess):
         """Test MCP engine process failure."""
@@ -746,12 +771,12 @@ class TestHTTPBridgeMCPEngineIntegration:
         }
         
         response = await forward_to_mcp_engine(request)
-        
+
         assert response["ok"] is False
-        assert "process failed" in response["summary"].lower()
+        assert "process failed" in response["error_detail"]["summary"].lower()
         assert response["metrics"]["exit_code"] == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio(backend="asyncio")
     @patch('http_bridge.asyncio.create_subprocess_exec')
     async def test_forward_to_mcp_engine_timeout(self, mock_subprocess):
         """Test MCP engine timeout handling."""
@@ -769,12 +794,12 @@ class TestHTTPBridgeMCPEngineIntegration:
         }
         
         response = await forward_to_mcp_engine(request)
-        
+
         assert response["ok"] is False
-        assert "timeout" in response["summary"].lower()
+        assert "timeout" in response["error_detail"]["summary"].lower()
         assert response["metrics"]["exit_code"] == 124
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio(backend="asyncio")
     @patch('http_bridge.asyncio.create_subprocess_exec')
     async def test_forward_to_mcp_engine_invalid_json(self, mock_subprocess):
         """Test MCP engine invalid JSON response."""
@@ -794,7 +819,7 @@ class TestHTTPBridgeMCPEngineIntegration:
         }
         
         response = await forward_to_mcp_engine(request)
-        
+
         assert response["ok"] is False
-        assert "parsing failed" in response["summary"].lower()
+        assert "parsing failed" in response["error_detail"]["summary"].lower()
         assert "invalid json" in response["error"].lower()

@@ -12,11 +12,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from burly_mcp.server.mcp import (
-    MCPProtocolHandler,
-    MCPRequest,
-    MCPResponse,
-)
+from burly_mcp.server.mcp import MCPProtocolHandler, MCPRequest, MCPResponse
+from burly_mcp.confirmation import require_confirmation_response
 
 
 class TestMCPRequest:
@@ -209,13 +206,14 @@ class TestMCPResponse:
         json_data = response.to_json()
 
         assert json_data["ok"] is True
-        assert json_data["summary"] == "Test completed"
-        assert "need_confirm" not in json_data  # Should be omitted when False
+        assert json_data["result"]["summary"] == "Test completed"
+        assert json_data["result"].get("need_confirm") is None  # Should be omitted when False
         assert "error" not in json_data
-        assert "data" not in json_data
-        assert "stdout" not in json_data
-        assert "stderr" not in json_data
+        assert "data" not in json_data["result"]
+        assert "stdout" not in json_data["result"]
+        assert "stderr" not in json_data["result"]
         assert "metrics" in json_data
+        assert "meta" in json_data
 
     def test_to_json_success_full(self):
         """Test JSON serialization of full success response."""
@@ -231,12 +229,14 @@ class TestMCPResponse:
         json_data = response.to_json()
 
         assert json_data["ok"] is True
-        assert json_data["summary"] == "Operation completed"
-        assert json_data["need_confirm"] is True
-        assert json_data["data"] == data
-        assert json_data["stdout"] == "Command output"
-        assert json_data["stderr"] == "Warning"
+        assert json_data["result"]["summary"] == "Operation completed"
+        assert json_data["result"]["need_confirm"]["required"] is True
+        assert json_data["result"]["need_confirm"]["details"] == data
+        assert json_data["result"].get("data") is None
+        assert json_data["result"]["stdout"] == "Command output"
+        assert json_data["result"]["stderr"] == "Warning"
         assert json_data["metrics"]["elapsed_ms"] == 100
+        assert "meta" in json_data
 
     def test_to_json_error(self):
         """Test JSON serialization of error response."""
@@ -246,21 +246,47 @@ class TestMCPResponse:
         json_data = response.to_json()
 
         assert json_data["ok"] is False
-        assert json_data["summary"] == "Command failed"
+        assert json_data["error_detail"]["summary"] == "Command failed"
         assert json_data["error"] == "Something went wrong"
-        assert json_data["stderr"] == "Error details"
-        assert "need_confirm" not in json_data
-        assert "data" not in json_data
-        assert "stdout" not in json_data
+        assert json_data["error_detail"]["stderr"] == "Error details"
+        assert json_data.get("result") is None
+        assert "stdout" not in json_data["error_detail"]
+        assert "meta" in json_data
 
     def test_to_json_empty_strings_omitted(self):
         """Test that empty strings are omitted from JSON output."""
         response = MCPResponse(ok=True, summary="Test", stdout="", stderr="", data=None)
         json_data = response.to_json()
 
-        assert "stdout" not in json_data
-        assert "stderr" not in json_data
-        assert "data" not in json_data
+        assert "stdout" not in json_data["result"]
+        assert "stderr" not in json_data["result"]
+        assert json_data["result"].get("data") is None
+
+    def test_confirmation_helper_envelope(self):
+        """require_confirmation_response returns canonical envelope structure."""
+
+        envelope = require_confirmation_response("blog_publish_static", "publish blog content")
+
+        assert envelope["ok"] is False
+        assert envelope["need_confirm"] is True
+        assert envelope["summary"] == "Confirmation required for blog_publish_static"
+        assert envelope["metrics"] == {"elapsed_ms": 0, "exit_code": 1}
+
+        meta = envelope["meta"]
+        assert meta["api_version"]
+        assert meta["container_version"]
+        assert meta["git_sha"]
+
+        result = envelope["result"]
+        assert result["summary"] == envelope["summary"]
+        confirmation = result["need_confirm"]
+        assert confirmation["required"] is True
+        assert confirmation["code"] == "CONFIRM_REQUIRED"
+        assert confirmation["message"] == envelope["error"]
+        assert confirmation["details"]["tool"] == "blog_publish_static"
+
+        assert envelope["error_detail"]["code"] == "CONFIRM_REQUIRED"
+        assert envelope["error_detail"]["details"] == envelope["data"]
 
 
 class TestMCPProtocolHandler:
@@ -396,7 +422,7 @@ class TestMCPProtocolHandler:
         json_output = args[0]
         parsed = json.loads(json_output)
         assert parsed["ok"] is True
-        assert parsed["summary"] == "Test completed"
+        assert parsed["result"]["summary"] == "Test completed"
 
     @patch("builtins.print")
     def test_write_response_serialization_error(self, mock_print):
@@ -416,10 +442,8 @@ class TestMCPProtocolHandler:
         fallback_json = last_call_args[0]
         parsed = json.loads(fallback_json)
         assert parsed["ok"] is False
-        assert (
-            "serialization" in parsed["summary"].lower()
-            or "error" in parsed["summary"].lower()
-        )
+        error_summary = parsed["error_detail"]["summary"].lower()
+        assert "serialization" in error_summary or "error" in error_summary
 
     def test_create_error_response(self):
         """Test creating standardized error response."""
@@ -725,7 +749,10 @@ class TestMCPProtocolHandler:
             if response_json.strip():  # Skip empty responses
                 try:
                     parsed = json.loads(response_json)
-                    if not parsed["ok"] and "server error" in parsed["summary"].lower():
+                    if (
+                        not parsed["ok"]
+                        and "server error" in parsed["error_detail"]["summary"].lower()
+                    ):
                         error_found = True
                         break
                 except json.JSONDecodeError:
@@ -801,9 +828,9 @@ class TestMCPConfirmationWorkflow:
         json_data = response.to_json()
 
         assert json_data["ok"] is True
-        assert json_data["need_confirm"] is True
-        assert json_data["summary"] == "Ready to execute"
-        assert json_data["data"] == {"preview": "operation details"}
+        assert json_data["result"]["need_confirm"]["required"] is True
+        assert json_data["result"]["summary"] == "Ready to execute"
+        assert json_data["result"]["need_confirm"]["details"] == {"preview": "operation details"}
 
     def test_confirmation_workflow_error_with_confirmation(self):
         """Test error response that still requires confirmation."""
