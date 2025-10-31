@@ -14,7 +14,7 @@ from typing import Any
 import jsonschema
 import yaml
 
-from .dir_loader import load_tools_from_sources
+from .dir_loader import DEFAULT_POLICY_FILE, load_tools_from_sources
 
 
 class PolicyLoadError(Exception):
@@ -83,6 +83,7 @@ class PolicyLoader:
         self._tools: dict[str, ToolDefinition] = {}
         self._config: PolicyConfig | None = None
         self._loaded = False
+        self._loader_stats: dict[str, Any] | None = None
 
     def load_policy(self) -> None:
         """
@@ -99,11 +100,37 @@ class PolicyLoader:
             canonical_path = os.path.realpath(self.policy_file_path)
             allowed_base = os.path.realpath(".")
 
-            # Enhanced path traversal protection
-            if (
-                not canonical_path.startswith(allowed_base + os.sep)
-                and canonical_path != allowed_base
-            ):
+            allowed_roots = {allowed_base}
+
+            # Always allow the default container policy path and any explicit override
+            default_policy_root = os.path.dirname(os.path.realpath(DEFAULT_POLICY_FILE))
+            allowed_roots.add(default_policy_root)
+
+            env_policy_file = os.getenv("POLICY_FILE")
+            if env_policy_file:
+                allowed_roots.add(os.path.dirname(os.path.realpath(env_policy_file)))
+
+            def _is_within_root(path: str, root: str) -> bool:
+                normalized_root = os.path.normpath(root)
+                if normalized_root == os.sep:
+                    normalized_root = os.sep
+                return path.startswith(normalized_root.rstrip(os.sep) + os.sep) or path == normalized_root
+
+            allowed = any(
+                _is_within_root(canonical_path, root)
+                for root in allowed_roots
+                if root
+            )
+
+            default_policy_path = os.path.realpath(DEFAULT_POLICY_FILE)
+            if canonical_path == default_policy_path:
+                allowed = True
+            elif env_policy_file:
+                env_policy_path = os.path.realpath(env_policy_file)
+                if canonical_path == env_policy_path:
+                    allowed = True
+
+            if not allowed:
                 raise PolicyLoadError(
                     "Policy file path not allowed - potential path traversal"
                 )
@@ -113,30 +140,92 @@ class PolicyLoader:
             if any(component in ["..", ".", "~"] for component in path_components):
                 raise PolicyLoadError("Policy file path contains suspicious components")
 
-            # Check if policy file exists
-            if not os.path.exists(canonical_path):
-                raise PolicyLoadError("Policy file not found")
+            policy_data: dict[str, Any] = {"tools": {}}
 
-            # Update to use canonical path
-            self.policy_file_path = canonical_path
+            if os.path.exists(canonical_path):
+                # Update to use canonical path
+                self.policy_file_path = canonical_path
 
-            # Read and parse YAML file with size limits
-            file_size = os.path.getsize(self.policy_file_path)
-            if file_size > 1024 * 1024:  # 1MB limit
-                raise PolicyLoadError("Policy file exceeds maximum size limit")
+                # Read and parse YAML file with size limits
+                file_size = os.path.getsize(self.policy_file_path)
+                if file_size > 1024 * 1024:  # 1MB limit
+                    raise PolicyLoadError("Policy file exceeds maximum size limit")
 
-            with open(self.policy_file_path, encoding="utf-8") as f:
-                content = f.read(1024 * 1024)  # Additional read limit
-                try:
-                    # Use safe_load with custom loader to prevent YAML bombs
-                    policy_data = yaml.safe_load(content)
-                    if policy_data is None:
-                        raise PolicyLoadError("Policy file is empty or invalid")
-                except yaml.YAMLError:
-                    raise PolicyLoadError("Policy file contains invalid YAML syntax")
+                with open(self.policy_file_path, encoding="utf-8") as f:
+                    content = f.read(1024 * 1024)  # Additional read limit
+                    try:
+                        # Use safe_load with custom loader to prevent YAML bombs
+                        parsed = yaml.safe_load(content)
+                        if parsed is None:
+                            raise PolicyLoadError("Policy file is empty or invalid")
+                        if not isinstance(parsed, dict):
+                            raise PolicyLoadError("Policy file must contain a YAML object")
+                        policy_data = parsed
+                    except yaml.YAMLError:
+                        raise PolicyLoadError("Policy file contains invalid YAML syntax")
+            else:
+                # Use canonical path for downstream logging and directory loading
+                self.policy_file_path = canonical_path
+                logger.info(
+                    "Policy file not found at %s; continuing with directory configurations only",
+                    canonical_path,
+                )
 
             # Validate policy structure
             self._validate_policy_structure(policy_data)
+
+            # Load tools from legacy file plus directory overrides
+            merged_tools, loader_stats = load_tools_from_sources(
+                logger=logger,
+                policy_file_override=self.policy_file_path,
+            )
+
+            # Persist loader stats for diagnostics and testing.
+            self._loader_stats = dict(loader_stats)
+
+            enabled_tool_map: dict[str, dict[str, Any]] = {}
+            disabled_tools: list[str] = []
+
+            for tool in merged_tools:
+                name = (tool or {}).get("name")
+                if not name:
+                    continue
+
+                if tool.get("enabled") is False:
+                    disabled_tools.append(name)
+                    continue
+
+                normalized = dict(tool)
+                normalized.pop("name", None)
+                normalized.pop("enabled", None)
+
+                # Support alternate field names used by directory configs
+                if "mutates" not in normalized and "mutating" in normalized:
+                    normalized["mutates"] = bool(normalized.pop("mutating"))
+
+                enabled_tool_map[name] = normalized
+
+            loader_stats["enabled_tools"] = len(enabled_tool_map)
+            loader_stats["disabled_tools"] = len(disabled_tools)
+
+            if disabled_tools:
+                logger.info(
+                    "Policy tools disabled via configuration: %s",
+                    ", ".join(sorted(disabled_tools)),
+                )
+
+            invalid_entries = loader_stats.get("invalid", [])
+            if invalid_entries:
+                logger.warning(
+                    "Skipped %d invalid policy definitions", len(invalid_entries)
+                )
+
+            logger.info(
+                "Policy tools active: enabled=%d disabled=%d invalid=%d",
+                loader_stats.get("enabled_tools", 0),
+                loader_stats.get("disabled_tools", 0),
+                len(invalid_entries),
+            )
 
             # Load tools from legacy file plus directory overrides
             merged_tools, loader_stats = load_tools_from_sources(
@@ -223,6 +312,11 @@ class PolicyLoader:
 
         if "config" in policy_data and not isinstance(policy_data["config"], dict):
             raise PolicyValidationError("'config' section must be an object")
+
+    def get_loader_stats(self) -> dict[str, Any] | None:
+        """Return the most recent loader statistics snapshot."""
+
+        return dict(self._loader_stats) if self._loader_stats is not None else None
 
     def _load_tools(self, tools_data: dict[str, Any]) -> None:
         """

@@ -4,6 +4,7 @@ Unit tests for the Burly MCP policy engine.
 
 import os
 import tempfile
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -108,6 +109,173 @@ class TestPolicyLoader:
 
             with pytest.raises(PolicyLoadError):
                 loader.load_policy()
+
+    def test_policy_loader_directory_merges_and_overrides(self):
+        """Tools defined in POLICY_DIR should merge with the base file."""
+        from burly_mcp.policy.engine import PolicyLoader
+
+        with tempfile.TemporaryDirectory(dir=".") as temp_dir:
+            policy_file = os.path.join(temp_dir, "policy.yaml")
+            policy_dir = os.path.join(temp_dir, "tools.d")
+            os.makedirs(policy_dir, exist_ok=True)
+
+            base_policy = {
+                "tools": {
+                    "from_file": {
+                        "description": "legacy command",
+                        "args_schema": {"type": "object"},
+                        "command": ["echo", "legacy"],
+                        "mutates": False,
+                        "requires_confirm": False,
+                        "timeout_sec": 30,
+                    }
+                }
+            }
+
+            with open(policy_file, "w", encoding="utf-8") as handle:
+                yaml.safe_dump(base_policy, handle)
+
+            first_pack = {
+                "tools": [
+                    {
+                        "name": "dir_only",
+                        "description": "directory provided tool",
+                        "args_schema": {"type": "object"},
+                        "command": ["bash", "-lc", "echo directory"],
+                        "mutating": False,
+                        "requires_confirm": False,
+                        "timeout_sec": 25,
+                    },
+                    {
+                        "name": "from_file",
+                        "description": "override v1",
+                        "args_schema": {"type": "object"},
+                        "command": ["echo", "dir-v1"],
+                        "mutating": False,
+                        "requires_confirm": False,
+                        "timeout_sec": 40,
+                    },
+                ]
+            }
+
+            override_pack = {
+                "tools": [
+                    {
+                        "name": "from_file",
+                        "description": "override v2",
+                        "args_schema": {"type": "object"},
+                        "command": ["echo", "dir-v2"],
+                        "mutating": False,
+                        "requires_confirm": False,
+                        "timeout_sec": 10,
+                    }
+                ]
+            }
+
+            with open(
+                os.path.join(policy_dir, "010-first.yaml"), "w", encoding="utf-8"
+            ) as handle:
+                yaml.safe_dump(first_pack, handle)
+
+            with open(
+                os.path.join(policy_dir, "020-override.yaml"), "w", encoding="utf-8"
+            ) as handle:
+                yaml.safe_dump(override_pack, handle)
+
+            with patch.dict(os.environ, {"POLICY_DIR": policy_dir}, clear=False):
+                loader = PolicyLoader(policy_file)
+                loader.load_policy()
+
+            assert loader.is_loaded()
+
+            dir_tool = loader.get_tool_definition("dir_only")
+            assert dir_tool is not None
+            assert dir_tool.command == ["bash", "-lc", "echo directory"]
+            assert dir_tool.mutates is False
+
+            merged_tool = loader.get_tool_definition("from_file")
+            assert merged_tool is not None
+            # The directory override should replace the legacy file definition
+            assert merged_tool.command == ["echo", "dir-v2"]
+            assert merged_tool.timeout_sec == 10
+
+            stats = loader.get_loader_stats()
+            assert stats is not None
+            assert stats.get("from_file_count") == 1
+            assert stats.get("from_dir_files") == 2
+            assert stats.get("from_dir_tools") == 3
+
+    def test_policy_loader_handles_missing_file_with_directory_only(self, monkeypatch):
+        """Directory-based configs should load even if the legacy file is absent."""
+        from burly_mcp.policy.engine import PolicyLoader
+
+        with tempfile.TemporaryDirectory(dir=".") as temp_dir:
+            policy_dir = os.path.join(temp_dir, "tools.d")
+            os.makedirs(policy_dir, exist_ok=True)
+
+            pack = {
+                "tools": [
+                    {
+                        "name": "dir_tool",
+                        "description": "configured from directory",
+                        "args_schema": {"type": "object"},
+                        "command": ["echo", "dir"],
+                        "mutating": False,
+                        "requires_confirm": False,
+                        "timeout_sec": 15,
+                    }
+                ]
+            }
+
+            with open(os.path.join(policy_dir, "050-dir.yaml"), "w", encoding="utf-8") as handle:
+                yaml.safe_dump(pack, handle)
+
+            missing_file = os.path.join(temp_dir, "policy.yaml")
+
+            monkeypatch.setenv("POLICY_DIR", policy_dir)
+
+            loader = PolicyLoader(missing_file)
+            loader.load_policy()
+
+            dir_tool = loader.get_tool_definition("dir_tool")
+            assert dir_tool is not None
+            assert dir_tool.command == ["echo", "dir"]
+            assert dir_tool.timeout_sec == 15
+
+    def test_policy_loader_accepts_absolute_policy_file_outside_repo(self, monkeypatch):
+        """Absolute policy paths provided via env should be permitted."""
+        from burly_mcp.policy.engine import PolicyLoader
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            policy_root = os.path.join(temp_dir, "policy")
+            os.makedirs(policy_root, exist_ok=True)
+            policy_path = os.path.join(policy_root, "tools.yaml")
+
+            policy_content = {
+                "tools": {
+                    "external_tool": {
+                        "description": "external mount",
+                        "command": ["echo", "external"],
+                        "mutates": False,
+                        "requires_confirm": False,
+                        "timeout_sec": 5,
+                        "args_schema": {"type": "object"},
+                    }
+                }
+            }
+
+            with open(policy_path, "w", encoding="utf-8") as handle:
+                yaml.safe_dump(policy_content, handle)
+
+            monkeypatch.setenv("POLICY_FILE", policy_path)
+
+            loader = PolicyLoader(policy_path)
+            loader.load_policy()
+
+            assert loader.is_loaded()
+            tool = loader.get_tool_definition("external_tool")
+            assert tool is not None
+            assert tool.command == ["echo", "external"]
 
     @pytest.mark.skip(reason="TODO: Fix policy file path security restrictions")
     def test_validate_policy_structure(self):
