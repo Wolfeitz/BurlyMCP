@@ -14,7 +14,7 @@ from typing import Any
 import jsonschema
 import yaml
 
-from .dir_loader import load_tools_from_sources
+from .dir_loader import DEFAULT_POLICY_FILE, load_tools_from_sources
 
 
 class PolicyLoadError(Exception):

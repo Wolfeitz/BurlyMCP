@@ -49,8 +49,15 @@ class TestPolicyLoader:
         """Test loading a non-existent policy file."""
         loader = PolicyLoader("nonexistent.yaml")
 
-        with pytest.raises(PolicyLoadError, match="Policy file not found"):
-            loader.load_policy()
+        # Should not raise an error, but continue with directory-based loading
+        loader.load_policy()
+        
+        # Should be loaded successfully (even with no tools)
+        assert loader.is_loaded()
+        
+        # Should have empty tools since no file or directory exists
+        all_tools = loader.get_all_tools()
+        assert isinstance(all_tools, dict)
 
     def test_load_empty_file(self, test_policy_file):
         """Test loading an empty policy file."""
@@ -203,10 +210,14 @@ tools:
     def test_suspicious_path_components(self):
         """Test detection of suspicious path components."""
         # Test with a path that contains .. but doesn't exist
+        # Note: os.path.realpath normalizes the path, so ".." gets resolved
         loader = PolicyLoader("policy/../config.yaml")
 
-        with pytest.raises(PolicyLoadError, match="Policy file not found"):
-            loader.load_policy()
+        # Should not raise an error since the path gets normalized and file doesn't exist
+        loader.load_policy()
+        
+        # Should be loaded successfully (even with no tools)
+        assert loader.is_loaded()
 
     def test_file_size_limit(self, test_policy_file):
         """Test file size limit enforcement."""
